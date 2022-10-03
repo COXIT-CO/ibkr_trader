@@ -1,17 +1,18 @@
-#!/usr/bin/env python3
+import sys
+sys.path.append("site-packages")
 
 from prompt_toolkit.patch_stdout import patch_stdout
 from loguru import logger
 from mutil import safeLoop  # type: ignore
 import asyncio
-import icli.cli as cli
+import cli
 import sys
 
 from dotenv import dotenv_values
 import os
 
 CONFIG_DEFAULT = dict(
-    ICLI_IBKR_HOST="127.0.0.1", ICLI_IBKR_PORT=4001, ICLI_REFRESH=3.33
+    ICLI_IBKR_HOST="127.0.0.1", ICLI_IBKR_PORT=4002, ICLI_REFRESH=3.33
 )
 
 CONFIG = {**CONFIG_DEFAULT, **dotenv_values(".env.icli"), **os.environ}

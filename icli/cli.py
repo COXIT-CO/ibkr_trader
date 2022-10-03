@@ -1,4 +1,5 @@
-#!/usr/bin/env python3
+import sys
+sys.path.append("site-packages")
 
 original_print = print
 from prompt_toolkit import print_formatted_text, Application
@@ -13,8 +14,8 @@ import re
 # http://www.grantjenks.com/docs/diskcache/
 import diskcache
 
-from icli.futsexchanges import FUTS_EXCHANGE
-import icli.orders as orders
+from futsexchanges import FUTS_EXCHANGE
+import orders as orders
 import decimal
 import sys
 
@@ -68,8 +69,8 @@ from loguru import logger
 
 import seaborn
 
-import icli.lang as lang
-from icli.helpers import *  # FUT_EXP is appearing from here
+import lang as lang
+from helpers import *  # FUT_EXP is appearing from here
 from mutil.numeric import fmtPrice, fmtPricePad
 from mutil.timer import Timer
 import tradeapis.buylang as buylang
@@ -258,7 +259,7 @@ class IBKRCmdlineApp:
     toolbarUpdateInterval: float = 2.22
 
     host: str = "127.0.0.1"
-    port: int = 4001
+    port: int = 4002
 
     # initialized to True/False when we first see the account
     # ID returned from the API which will tell us if this is a
@@ -1695,38 +1696,38 @@ class IBKRCmdlineApp:
         # from multiple accounts with one API connection apparently)
         self.ib.updatePortfolioEvent += lambda row: self.updatePosition(row)
 
-        async def requestMarketData():
-            logger.info("Requesting market data...")
+        # async def requestMarketData():
+        #     logger.info("Requesting market data...")
 
-            # resubscribe to active quotes
-            # remove all quotes and re-subscribe to the current quote state
-            logger.info("[quotes] Restoring quote state...")
-            self.quoteState.clear()
+        #     # resubscribe to active quotes
+        #     # remove all quotes and re-subscribe to the current quote state
+        #     logger.info("[quotes] Restoring quote state...")
+        #     self.quoteState.clear()
 
-            await self.dispatch.runop("qrestore", "global", self.opstate)
-            logger.info("[quotes] All quotes subscribed!")
+        #     await self.dispatch.runop("qrestore", "global", self.opstate)
+        #     logger.info("[quotes] All quotes subscribed!")
 
-            # We used to think this needed to be called before each new market data request, but
-            # apparently it works fine now only set once up front?
-            # Tell IBKR API to return "last known good quote" if outside
-            # of regular market hours instead of giving us bad data.
-            self.ib.reqMarketDataType(2)
+        #     # We used to think this needed to be called before each new market data request, but
+        #     # apparently it works fine now only set once up front?
+        #     # Tell IBKR API to return "last known good quote" if outside
+        #     # of regular market hours instead of giving us bad data.
+        #     self.ib.reqMarketDataType(2)
 
-            for contract in contracts:
-                # Additional details can be requested:
-                # https://ib-insync.readthedocs.io/api.html#ib_insync.ib.IB.reqMktData
-                # https://interactivebrokers.github.io/tws-api/tick_types.html
-                # By default, only common fields are populated (so things like 13/26/52 week
-                # highs and lows aren't created unless requested via tick set 165, etc)
-                # Also can subscribe to live news feed per symbol with tick 292 (news result
-                # returned via tickNewsEvent callback, we think)
+        #     for contract in contracts:
+        #         # Additional details can be requested:
+        #         # https://ib-insync.readthedocs.io/api.html#ib_insync.ib.IB.reqMktData
+        #         # https://interactivebrokers.github.io/tws-api/tick_types.html
+        #         # By default, only common fields are populated (so things like 13/26/52 week
+        #         # highs and lows aren't created unless requested via tick set 165, etc)
+        #         # Also can subscribe to live news feed per symbol with tick 292 (news result
+        #         # returned via tickNewsEvent callback, we think)
 
-                tickFields = tickFieldsForContract(contract)
-                self.quoteState[contract.symbol] = self.ib.reqMktData(
-                    contract, tickFields
-                )
+        #         tickFields = tickFieldsForContract(contract)
+        #         self.quoteState[contract.symbol] = self.ib.reqMktData(
+        #             contract, tickFields
+        #         )
 
-                self.quoteContracts[contract.symbol] = contract
+        #         self.quoteContracts[contract.symbol] = contract
 
         async def reconnect():
             # don't reconnect if an exit is requested
@@ -1760,9 +1761,9 @@ class IBKRCmdlineApp:
 
                     self.connected = True
 
-                    self.ib.reqNewsBulletins(True)
+                    # self.ib.reqNewsBulletins(True)
 
-                    await requestMarketData()
+                    # await requestMarketData()
 
                     # reset cached states on reconnect so we don't show stale data
                     self.summary.clear()
@@ -1771,15 +1772,15 @@ class IBKRCmdlineApp:
                     self.pnlSingle.clear()
 
                     # request live updates (well, once per second) of account and position values
-                    self.ib.reqPnL(self.accountId)
+                    # self.ib.reqPnL(self.accountId)
 
                     # Subscribe to realtime PnL updates for all positions in account
                     # Note: these are updated once per second per position! nice.
                     # TODO: add this to the account order/filling notifications too.
-                    for p in self.ib.portfolio():
-                        self.pnlSingle[p.contract.conId] = self.ib.reqPnLSingle(
-                            self.accountId, "", p.contract.conId
-                        )
+                    # for p in self.ib.portfolio():
+                    #     self.pnlSingle[p.contract.conId] = self.ib.reqPnLSingle(
+                    #         self.accountId, "", p.contract.conId
+                    #     )
 
                     if False:
                         # Optionally we can subscribe to live bars for futures if we
@@ -1844,19 +1845,19 @@ class IBKRCmdlineApp:
 
         app = session.app
 
-        async def updateToolbar():
-            """Update account balances"""
-            try:
-                app.invalidate()
-            except:
-                # network error, don't update anything
-                pass
+        # async def updateToolbar():
+        #     """Update account balances"""
+        #     try:
+        #         app.invalidate()
+        #     except:
+        #         # network error, don't update anything
+        #         pass
 
-            loop.call_later(
-                self.toolbarUpdateInterval, lambda: asyncio.create_task(updateToolbar())
-            )
+        #     loop.call_later(
+        #         self.toolbarUpdateInterval, lambda: asyncio.create_task(updateToolbar())
+        #     )
 
-        loop.create_task(updateToolbar())
+        # loop.create_task(updateToolbar())
 
         # Primary REPL loop
         while True:
