@@ -1,0 +1,30 @@
+Metadata-Version: 2.1
+Name: tableprint
+Version: 0.9.1
+Summary: Pretty console printing of tabular data
+Home-page: https://github.com/nirum/tableprint
+Author: Niru Maheswaranathan
+Author-email: niru@hey.com
+License: MIT
+Keywords: table print display
+Platform: UNKNOWN
+Classifier: Development Status :: 4 - Beta
+Classifier: Intended Audience :: Science/Research
+Classifier: Topic :: Text Processing :: General
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Programming Language :: Python :: 3.6
+Classifier: Programming Language :: Python :: 3.7
+Classifier: Programming Language :: Python :: 3.8
+Requires-Dist: future
+Requires-Dist: wcwidth
+Provides-Extra: dev
+Provides-Extra: test
+Requires-Dist: pandas ; extra == 'test'
+Requires-Dist: pytest ; extra == 'test'
+Requires-Dist: pytest-cov ; extra == 'test'
+
+Formatted console printing of tabular data.
+tableprint lets you easily print formatted tables of data.
+Unlike other modules, you can print single rows of data at a time
+(useful for printing ongoing computation results).
+
