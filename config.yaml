@@ -1,0 +1,67 @@
+# order:
+#   buy:
+#       stock:
+#         - TSLA
+#         - PSTG
+#       conditions:
+#         - type: trailing-limit
+#         - funds: 10000
+#         - price-cents: 2000  # request current price
+#         - trailing-drop-percent: 10
+#   sell:
+#     - type: trailing-limit
+#     - trailing-drop-percent: 20
+#     - margin-loss: 1
+
+
+# milestone 2 (buy stock if it drops x percentages)
+
+# pattern
+
+# order:
+#   buy:
+#     stocks:
+#       - TSLA: 2  # quantity
+#       - PSTG: 4
+#     conditions:
+#       - type: trailing-limit
+#       # - funds: 10000
+#         #- price-cents: 2000  # request current price
+#       - trailing-drop-percent: 10
+#     stocks:
+#       - MSFT: 2
+#       - AAPL: 6
+#     conditions:
+#       - type: trailing-limit
+#       # - funds: 10000
+#         #- price-cents: 2000  # request current price
+#       - trailing-drop-percent: 10
+#   sell:
+#     - type: trailing-limit
+#     - trailing-drop-percent: 20
+#     - margin-loss: 1
+
+fill: "on"
+order:
+  buy:
+    - stocks:
+        - TSLA: 2
+        - PSTG: 4
+      conditions:
+        - type: trailing-limit
+        # - funds: 10000
+          #- price-cents: 2000  # request current price
+        - trailing-drop-percent: 10
+    - stocks:
+        - MSFT: 2
+        - AAPL: 6
+    - conditions:
+        - type: trailing-limit
+        # - funds: 10000
+          #- price-cents: 2000  # request current price
+        - trailing-drop-percent: 10
+  sell:
+    - type: trailing-limit
+    - trailing-drop-percent: 20
+    - margin-loss: 1
+
