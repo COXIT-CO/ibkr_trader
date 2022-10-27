@@ -1,0 +1,12 @@
+- AAPL:
+    quantity: '2'
+    trailing-drop-percent: 10.0
+    trailing-up-percent: 2.0
+    percentage-risk-avoidance: 20.0
+    time: 1666603227.0145473
+- TSLA:
+    quantity: '4'
+    trailing-drop-percent: 10.0
+    trailing-up-percent: 2.0
+    percentage-risk-avoidance: 20.0
+    time: 1666603227.014553

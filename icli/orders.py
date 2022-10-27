@@ -1,7 +1,4 @@
 """ Common order types with reusable parameter configurations."""
-import sys
-sys.path.append("site-packages")
-
 from ib_insync import (
     Order,
     LimitOrder,

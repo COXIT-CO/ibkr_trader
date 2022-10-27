@@ -1,6 +1,3 @@
-import sys
-sys.path.append("site-packages")
-
 import dataclasses  # just for .replace
 from dataclasses import dataclass, field
 from typing import *
@@ -24,8 +21,8 @@ import numpy as np
 
 import fnmatch
 from loguru import logger
-from helpers import *
-import orders as orders
+from icli.helpers import *
+import icli.orders as orders
 import tradeapis.buylang as buylang
 from questionary import Choice
 

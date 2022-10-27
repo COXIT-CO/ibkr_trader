@@ -1,8 +1,5 @@
 """ A refactor-base for splitting out common helpers between cli and lang """
 
-import sys
-sys.path.append("site-packages")
-
 import ib_insync  # just for UNSET_DOUBLE
 from ib_insync import (
     Stock,
@@ -15,7 +12,7 @@ from ib_insync import (
     Contract,
 )
 
-from futsexchanges import FUTS_EXCHANGE
+from icli.futsexchanges import FUTS_EXCHANGE
 import tradeapis.rounder as rounder
 import pandas as pd
 import numpy as np
