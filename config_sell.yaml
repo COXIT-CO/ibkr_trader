@@ -1,0 +1,18 @@
+fill: "on"
+buy:
+  - stocks:
+      - TSLA: 2
+      - PSTG: 4
+    conditions:
+      - type: limit
+      # - funds: 10000
+        #- price-cents: 2000  # request current price
+      - drop-percent: 10
+  - stocks:
+      - MSFT: 2
+      - AAPL: 6
+    conditions:
+      - type: limit
+      # - funds: 10000
+        #- price-cents: 2000  # request current price
+      - trailing-drop-percent: 10

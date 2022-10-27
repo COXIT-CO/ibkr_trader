@@ -1,17 +1,20 @@
-#!/usr/bin/env python3
+import sys
+sys.path.append("site-packages")
 
 from prompt_toolkit.patch_stdout import patch_stdout
 from loguru import logger
 from mutil import safeLoop  # type: ignore
 import asyncio
-import icli.cli as cli
+from taras_trader import cli
 import sys
 
 from dotenv import dotenv_values
 import os
 
+logger.add("file.log", rotation="1 week")
+
 CONFIG_DEFAULT = dict(
-    ICLI_IBKR_HOST="127.0.0.1", ICLI_IBKR_PORT=4001, ICLI_REFRESH=3.33
+    ICLI_IBKR_HOST="127.0.0.1", ICLI_IBKR_PORT=4002
 )
 
 CONFIG = {**CONFIG_DEFAULT, **dotenv_values(".env.icli"), **os.environ}
@@ -26,14 +29,14 @@ except:
 
 HOST = CONFIG["ICLI_IBKR_HOST"]
 PORT = int(CONFIG["ICLI_IBKR_PORT"])  # type: ignore
-REFRESH = float(CONFIG["ICLI_REFRESH"])  # type: ignore
+# REFRESH = float(CONFIG["ICLI_REFRESH"])  # type: ignore
 
 
 async def initcli():
     app = cli.IBKRCmdlineApp(
-        accountId=ACCOUNT_ID, toolbarUpdateInterval=REFRESH, host=HOST, port=PORT
+        accountId=ACCOUNT_ID, host=HOST, port=PORT
     )
-    await app.setup()
+    # await app.setup()
     if sys.stdin.isatty():
         # patch entire application with prompt-toolkit-compatible stdout
         with patch_stdout(raw=True):
@@ -57,7 +60,7 @@ def runit():
         # known good exit condition
         ...
     except:
-        logger.exception("bad bad so bad bad")
+        logger.exception("unknown reasons, very very bad ...")
 
 
 if __name__ == "__main__":

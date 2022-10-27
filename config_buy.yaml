@@ -18,50 +18,47 @@
 
 # pattern
 
+# fill: "on"
 # order:
 #   buy:
-#     stocks:
-#       - TSLA: 2  # quantity
-#       - PSTG: 4
-#     conditions:
-#       - type: trailing-limit
-#       # - funds: 10000
-#         #- price-cents: 2000  # request current price
-#       - trailing-drop-percent: 10
-#     stocks:
-#       - MSFT: 2
-#       - AAPL: 6
-#     conditions:
-#       - type: trailing-limit
-#       # - funds: 10000
-#         #- price-cents: 2000  # request current price
-#       - trailing-drop-percent: 10
+#     - stocks:
+#         - TSLA: 2
+#         - PSTG: 4
+#       conditions:
+#         - type: trailing-limit
+#         # - funds: 10000
+#           #- price-cents: 2000  # request current price
+#         - trailing-drop-percent: 10
+#         - trailing-up-percent: 2
+#     - stocks:
+#         - MSFT: 2
+#         - AAPL: 6
+#       conditions:
+#         - type: trailing-limit
+#         # - funds: 10000
+#           #- price-cents: 2000  # request current price
+#         - trailing-drop-percent: 10
+#         - trailing-up-percent: 2
 #   sell:
 #     - type: trailing-limit
 #     - trailing-drop-percent: 20
 #     - margin-loss: 1
 
+
+
 fill: "on"
+# ATTENTION: Stocks haven't been processes cause their price exceeds balance cash, stocks averall price - , balance cash -
 order:
   buy:
     - stocks:
-        - TSLA: 2
-        - PSTG: 4
+        - AAPL: 2
+        - TSLA: 4
       conditions:
         - type: trailing-limit
         # - funds: 10000
           #- price-cents: 2000  # request current price
         - trailing-drop-percent: 10
-    - stocks:
-        - MSFT: 2
-        - AAPL: 6
-    - conditions:
-        - type: trailing-limit
-        # - funds: 10000
-          #- price-cents: 2000  # request current price
-        - trailing-drop-percent: 10
+        - trailing-up-percent: 2
   sell:
     - type: trailing-limit
     - trailing-drop-percent: 20
-    - margin-loss: 1
-
