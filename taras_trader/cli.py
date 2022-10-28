@@ -16,14 +16,11 @@ import re
 
 # http://www.grantjenks.com/docs/diskcache/
 import diskcache
-# from taras_trader 
-import scrape
+from taras_trader import scrape
 
-# from taras_trader 
-import orders
+from taras_trader import orders
 import sys
-# from taras_trader 
-import place_order
+from taras_trader import place_order
 
 from collections import Counter, defaultdict
 from dataclasses import dataclass, field
@@ -73,8 +70,7 @@ from loguru import logger
 import seaborn
 
 # import lang
-# from taras_trader 
-import helpers
+from taras_trader import helpers
 from mutil.numeric import fmtPrice, fmtPricePad
 from mutil.timer import Timer
 import tradeapis.buylang as buylang
@@ -432,19 +428,16 @@ class IBKRCmdlineApp:
         """Weekly index options have symbol names with 'W' but orders are placed without."""
         return name.replace("SPXW", "SPX").replace("RUTW", "RUT").replace("NDXP", "NDX")
 
+
     async def placeOrderForContract(
         self,
         sym: str,
         isLong: bool,
         contract: Contract,
         qty: float,
-        price: float,
+        # price: float,
+        lmt: float,
         orderType: str,
-        lmt: float = 0.00,
-        trailstop=0,
-        trailpct=0,
-        lmtPriceOffset=0,
-        aux=0,
         preview=False,
     ):
         """Place a BUY (isLong) or SELL (!isLong) for qualified 'contract' at qty/price.
@@ -456,7 +449,7 @@ class IBKRCmdlineApp:
         # turn option contract lookup into non-spaced version
         sym = sym.replace(" ", "")
 
-        logger.info("[{}] Request to order qty {} price {}", sym, qty, price)
+        # logger.info("[{}] Request to order qty {} price {}", sym, qty, price)
 
         # need to replace underlying if is "fake settled underlying"
         # quotesym = self.symbolNormalizeIndexWeeklyOptions(sym)
@@ -493,10 +486,6 @@ class IBKRCmdlineApp:
         outsideRth = True
 
         # TODO: cleanup, also verify how we want to run FAST or EVICT outside RTH?
-        if " " in orderType or (
-            orderType in {"MIDPRICE", "MKT + ADAPTIVE + FAST", "LMT + ADAPTIVE + FAST"}
-        ):
-            outsideRth = False
 
         # Negative 'qty' is a dollar amount to buy instead of share/contract
         # quantity, so we fetch a live quote to determine the initial quantity.
@@ -595,10 +584,6 @@ class IBKRCmdlineApp:
             outsiderth=outsideRth, 
             tif="GTC", 
             lmt=lmt,
-            trailstop=trailstop, 
-            trailpct=trailpct,
-            lmtPriceOffset=lmtPriceOffset, 
-            aux=aux,
         ).order(orderType)
 
         if preview:
@@ -628,6 +613,8 @@ class IBKRCmdlineApp:
 
         logger.info("[{}] Ordering {} via {}", contract.localSymbol, contract, order)
         trade = self.ib.placeOrder(contract, order)
+        print("trade")
+        print(trade)
 
         # TODO: add optional agent-like feature HERE to modify order in steps for buys (+price, -qty)
         #       or for sells (-price).

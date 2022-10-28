@@ -1,9 +1,7 @@
 import sys
 
-# from taras_trader 
-import scrape
+from taras_trader import scrape
 sys.path.append("site-packages")
-print(sys.path)
 
 # add lookup pattern to import anything from __init__.py module
 sys.path.append("..")
@@ -39,8 +37,7 @@ import pendulum
 import pandas as pd
 from dataclasses import dataclass
 
-# from taras_trader 
-import helpers
+from taras_trader import helpers
 
 # from helpers import extract_data_from_yaml_file
 
@@ -195,6 +192,7 @@ class Stocks:
     stocks_being_processed = []
     stocks_to_check_general_cost = []
     stop_trigger = False
+    stop_write_flag = False
     ib: IB = field(default_factory=IB)
     loop = None
     summary: dict[str, float] = field(default_factory=dict)
@@ -208,8 +206,14 @@ class Stocks:
     subscribes_per_stock: dict[str, int] = field(default_factory=dict)
     current_stock_prices: dict[str, int] = field(default_factory=dict)
     stocks_quantity: dict[str, List[Union[int, str]]] = field(default_factory=dict)
-    stock_info_to_write: list = field(default_factory=list)
+    stock_info_to_write: dict = field(default_factory=dict)
 
+
+    @classmethod
+    def set_stop_write_flag(cls, data):
+        if data is None:
+            data = {}
+        cls.stop_write_flag = data
 
     @classmethod
     def set_stocks_quantity(cls, data=None):
@@ -278,7 +282,7 @@ class Stocks:
 
 
     @classmethod
-    async def process_file_orders(cls, file_to_read, file_to_write):
+    def process_file_orders(cls, file_to_read):
         # while True:
         # if cls.stop_trigger:
         #     await asyncio.sleep(5)
@@ -296,7 +300,7 @@ class Stocks:
             # print(cls.raw_stocks_data)
             # print(cls.raw_stocks_data)
             scrape.replace_stocks_being_processed(cls.raw_stocks_data, file_to_read)
-            scrape.write_orders_to_file(cls.stocks_to_check_general_cost, file_to_write)
+            # scrape.write_orders_to_file(cls.stocks_to_check_general_cost, file_to_write)
             # cls.write_orders_to_file(cls.stocks_being_processed, file_to_write)
             # scrape.write_orders_to_file(raw_stocks_data, path_to_file)
         # await asyncio.sleep(3)
@@ -310,21 +314,21 @@ class Stocks:
             cls.stop_trigger = False
 
 
-    @staticmethod
-    def write_orders_without_risk_avoidance(
-        path_to_file, 
-        symbol, 
-        quantity, 
-        alert_price,
-    ):
-        stock_risk_avoidance_data = {
-            "symbol": symbol,
-            "quantity": quantity,
-            "alert_price": alert_price,
-        }
-        yaml_representation = yaml.dump(stock_risk_avoidance_data)
-        with open(path_to_file, "a") as file:
-            file.write(yaml_representation)
+    # @staticmethod
+    # def write_orders_without_risk_avoidance(
+    #     path_to_file, 
+    #     symbol, 
+    #     quantity, 
+    #     alert_price,
+    # ):
+    #     stock_risk_avoidance_data = {
+    #         "symbol": symbol,
+    #         "quantity": quantity,
+    #         "alert_price": alert_price,
+    #     }
+    #     yaml_representation = yaml.dump(stock_risk_avoidance_data)
+    #     with open(path_to_file, "a") as file:
+    #         file.write(yaml_representation)
 
 
     @staticmethod
@@ -375,6 +379,7 @@ class Stocks:
             time.sleep(time.time() - current_time)
             current_time = time.time()
             total_cost = 0
+        print("yes")
         
         return total_cost > self.accountStatus['TotalCashValue'], self.accountStatus['TotalCashValue'], total_cost
 
@@ -383,19 +388,20 @@ class Stocks:
     #     self,
     #     stock_conditions,
     # ):
-    #     percentage_drop = stock_conditions['trailing-drop-percent']
-    #     drop_price = current_stock_price - current_stock_price * (percentage_drop / 100)
-    #     percentage_rise = stock_conditions['trailing-up-percent']
-    #     rise_price = drop_price * ((100 + percentage_rise) / 100)
-    #     percentage_risk_avoidance = stock_conditions['percentage-risk-avoidance']
-    #     trigger_sell_price = rise_price - rise_price * (percentage_risk_avoidance / 100)
+    #     drop_percent = stock_conditions['trailing-drop-percent']
+    #     drop_price = current_stock_price - current_stock_price * (drop_percent / 100)
+    #     rise_percent = stock_conditions['trailing-up-percent']
+    #     rise_price = drop_price * ((100 + rise_percent) / 100)
+    #     risk_avoidance_percent = stock_conditions['percentage-risk-avoidance']
+    #     trigger_sell_price = rise_price - rise_price * (risk_avoidance_percent / 100)
     #     return drop_price, \
     #             rise_price, \
     #             trigger_sell_price
 
 
         
-    def define_function_to_start_with(self, stock_symbol, conditions):
+    def define_start_function_suspended_stocks(self, conditions):
+        """depending on the stock conditions define one of 3 function of main algorithm to start from"""
         if 'drop_percent' in conditions and 'rise_percent' in conditions and 'risk_avoidance_percent' in conditions:
             return self.process_stock
         elif 'drop_percent' not in conditions and 'rise_percent' in conditions:
@@ -404,65 +410,106 @@ class Stocks:
             return self.provide_risk_avoidance
 
 
-    def extract_data_suspended_stock(self, stock_symbol, conditions):
-        quantity = conditions['quantity']
-        risk_avoidance_percent = conditions['risk_avoidance_percent']
-        args = {
-            'stock_symbol': stock_symbol, 
-            'quantity': quantity, 
-            'risk_avoidance_percent': risk_avoidance_percent,
-        }
-        if 'drop_percent' in conditions and 'rise_percent' in conditions and 'risk_avoidance_percent' in conditions:
-            drop_percent = conditions['drop_percent']
-            rise_percent = conditions['rise_percent']
-            previous_max_price = conditions['max_price']
-            args += {
-                'drop_percent': drop_percent, 
-                'rise_percent': rise_percent, 
-                'previous_max_price': previous_max_price,
-            }
-        elif 'drop_percent' not in conditions and 'rise_percent' in conditions:
-            rise_percent = conditions['rise_percent']
-            drop_price = conditions['drop_price']
-            args = {
-                'drop_price': drop_price, 'rise_percent': rise_percent,
-            }
-        else:
-            previous_max_price = conditions['max_price']
-            args = {
-                'previous_max_price': previous_max_price,
-            }
+    # def extract_suspended_stock_conditions(self, stock_symbol, conditions):
+    #     """stocks can have different conditions depending on their stage from last program failure"""
+    #     quantity = conditions['quantity']
+    #     risk_avoidance_percent = conditions['risk_avoidance_percent']
+    #     possible_condition_fields = (
+    #         'stock_symbol', 'quantity', 'drop_percent', 'rise_percent',
+    #         'risk_avoidance_percent', 'drop_price', 'max_price',
+    #     )
+    #     stock_conditions = {}
+    #     for condition in possible_condition_fields:
+    #         try:
+    #             stock_conditions[condition] = conditions[condition]
 
-        return args
+    #     args = {
+    #         'stock_symbol': stock_symbol, 
+    #         'quantity': quantity, 
+    #         'risk_avoidance_percent': risk_avoidance_percent,
+    #     }
+    #     if 'drop_percent' in conditions and 'rise_percent' in conditions and 'risk_avoidance_percent' in conditions:
+    #         drop_percent = conditions['drop_percent']
+    #         rise_percent = conditions['rise_percent']
+    #         previous_max_price = conditions['max_price']
+    #         args += {
+    #             'drop_percent': drop_percent, 
+    #             'rise_percent': rise_percent, 
+    #             'previous_max_price': previous_max_price,
+    #         }
+    #     elif 'drop_percent' not in conditions and 'rise_percent' in conditions:
+    #         rise_percent = conditions['rise_percent']
+    #         drop_price = conditions['drop_price']
+    #         args = {
+    #             'drop_price': drop_price, 'rise_percent': rise_percent,
+    #         }
+    #     else:
+    #         previous_max_price = conditions['max_price']
+    #         args = {
+    #             'previous_max_price': previous_max_price,
+    #         }
+
+    #     return args
 
 
-    def set_proper_args_order(self, args):
-        possible_args = (
-            'stock_symbol', 'quantity', 'drop_percent', 'rise_percent', 
-            'previous_max_price', 'drop_price', 'previous_max_price'
+    def set_proper_conditions_order(self, stock_symbol, stock_conditions):
+        """set stock conditions on proper order cause stock-handling functions
+        preserve order"""
+        possible_ordered_conditions = (
+            'quantity', 'drop_percent', 'rise_percent', 
+            'risk_avoidance_percent', 'drop_price', 'max_price',
         )
 
-        ordered_args = ()
-        for arg in possible_args:
-            if arg in args:
-                ordered_args += (args[arg],)
+        ordered_stock_conditions = (stock_symbol,)
+        for condition in possible_ordered_conditions:
+            if condition in stock_conditions:
+                ordered_stock_conditions += (stock_conditions[condition],)
 
-        return ordered_args
+        return ordered_stock_conditions
 
 
     def process_suspended_stocks(self):
-        for stock_symbol, conditions in self.stock_info_to_write:
-            args = self.extract_data_suspended_stock(stock_symbol, conditions)
-            ordered_args = self.set_proper_args_order(args)
-            function_to_enter = self.define_function_to_start_with(stock_symbol, conditions)
-            threading.Thread(
-                target=function_to_enter, 
-                name="stock_handler", 
-                args=ordered_args
-            ).start()
+        for stock_symbol, conditions in self.stock_info_to_write.items():
+            # set stock conditions in proper order cause stock-handling functions 
+            # are sensitive to arguments order and we aren't allowed to pass arguments as named ones with dictionary
+            # cause args parameter https://docs.python.org/3/library/threading.html#threading.Thread supports only
+            # list or tuple, so we need to take of care of order by ourself
+            ordered_stock_conditions = self.set_proper_conditions_order(stock_symbol, conditions)
+            function_to_start_from = self.define_start_function_suspended_stocks(conditions)
+
+            if stock_symbol not in self.subscribes_per_stock or not self.subscribes_per_stock[stock_symbol]:
+                self.stock_tickers[stock_symbol] = self.subscribe_stock_market_data(stock_symbol)
+                self.subscribes_per_stock[stock_symbol] = self.subscribes_per_stock.get(stock_symbol, 0) + 1
+            self.loop.create_task(self.infinitely_get_stock_price(stock_symbol))
+
+            # add stock to general stock info keeping list
             self.stocks_being_processed.append(
                 {stock_symbol: conditions}
             )
+
+            # handle stock in separate thread
+            threading.Thread(
+                target=function_to_start_from, 
+                name="stock_handler", 
+                args=ordered_stock_conditions
+            ).start()
+
+
+    def update_stocks_info_file(self, file_to_write):
+        yaml_representation = yaml.dump(self.stocks_being_processed)
+        with open(file_to_write, "w") as file:
+            file.write(yaml_representation)
+
+
+    def write_stocks_info_to_file(self, path_to_file):
+        while self.stop_write_flag:
+            time.sleep(2)
+        self.set_stop_write_flag(True)
+        yaml_representation = yaml.dump(self.stocks_being_processed)
+        with open(path_to_file, "w") as file:
+            file.write(yaml_representation)
+        self.set_stop_write_flag(False)
+
 
     async def run(self):
         self.ib.accountSummaryEvent += self.updateSummary
@@ -471,93 +518,94 @@ class Stocks:
             self.ib.reqAccountSummaryAsync(),  # self.ib.reqPnLAsync()
         )
 
-        self.stock_info_to_write = helpers.extract_data_from_yaml_file("restore.yaml")
+        self.stock_info_to_write = helpers.extract_data_from_yaml_file("restore.yaml")[0]
 
         self.process_suspended_stocks()
+        await asyncio.sleep(30)
 
-        await self.process_file_orders("config_buy.yaml", "out.yaml")
+        self.process_file_orders("config_buy.yaml")
 
-        if self.stocks_to_check_general_cost:
-            for i in range(len(self.stocks_to_check_general_cost)):
-                symbol = list(self.stocks_to_check_general_cost[i].keys())[0]
-                if symbol not in self.subscribes_per_stock or not self.subscribes_per_stock[symbol]:
-                    self.stock_tickers[symbol] = self.subscribe_stock_market_data(symbol)
-                    self.subscribes_per_stock[symbol] = self.subscribes_per_stock.get(symbol, 0) + 1
-                self.loop.create_task(self.infinitely_get_stock_price(symbol))
-                quantity = list(self.stocks_to_check_general_cost[i].values())[0]['quantity']
-                self.stocks_quantity[symbol] = self.stocks_quantity.get(symbol, []).append(quantity)
+        # if self.stocks_to_check_general_cost:
+        #     for i in range(len(self.stocks_to_check_general_cost)):
+        #         symbol = list(self.stocks_to_check_general_cost[i].keys())[0]
+                # if symbol not in self.subscribes_per_stock or not self.subscribes_per_stock[symbol]:
+                #     self.stock_tickers[symbol] = self.subscribe_stock_market_data(symbol)
+                #     self.subscribes_per_stock[symbol] = self.subscribes_per_stock.get(symbol, 0) + 1
+                # self.loop.create_task(self.infinitely_get_stock_price(symbol))
+        #         quantity = list(self.stocks_to_check_general_cost[i].values())[0]['quantity']
+        #         self.stocks_quantity[symbol] = self.stocks_quantity.get(symbol, []).append(quantity)
 
-            does_stocks_cost_exceed_balance, balance_cash, total_stocks_cost = self.is_total_stocks_cost_affordable()
+        #     does_stocks_cost_exceed_balance, balance_cash, total_stocks_cost = self.is_total_stocks_cost_affordable()
 
-            if does_stocks_cost_exceed_balance:
-                scrape.replace_stocks_being_processed(
-                    self.raw_stocks_data,
-                    "config_buy.yaml",
-                    total_stocks_cost,
-                    balance_cash,
-                )
+        #     if does_stocks_cost_exceed_balance:
+        #         scrape.replace_stocks_being_processed(
+        #             self.raw_stocks_data,
+        #             "config_buy.yaml",
+        #             total_stocks_cost,
+        #             balance_cash,
+        #         )
 
-                # discard all subscriptions from stocks no more used
-                # and remove them from dictionaries holding their data
-                for stock_symbol, subscriptions in self.subscribes_per_stock.copy().items():
-                    self.subscribes_per_stock[stock_symbol] -= 1
-                    if not subscriptions:
-                        self.ib.cancelMktData(Stock(stock_symbol, "SMART", "USD"))
-                        del self.subscribes_per_stock[stock_symbol]
-                        del self.stock_tickers[stock_symbol]
-                        del self.current_stock_prices[stock_symbol]
+        #         # discard all subscriptions from stocks no more used
+        #         # and remove them from dictionaries holding their data
+        #         for stock_symbol, subscriptions in self.subscribes_per_stock.copy().items():
+        #             self.subscribes_per_stock[stock_symbol] -= 1
+        #             if not subscriptions:
+        #                 self.ib.cancelMktData(Stock(stock_symbol, "SMART", "USD"))
+        #                 del self.subscribes_per_stock[stock_symbol]
+        #                 del self.stock_tickers[stock_symbol]
+        #                 del self.current_stock_prices[stock_symbol]
                 
-                self.set_stop_trigger(True)
-                # make all collections holding data about stocks not able to execute clear
-            else:
-                scrape.replace_stocks_being_processed(
-                    self.raw_stocks_data,
-                    "config_buy.yaml",
-                    are_stocks_accepted=True,
-                )
-                self.stocks_being_processed += self.stocks_to_check_general_cost.copy()
+        #         self.set_stop_trigger(True)
+        #         # make all collections holding data about stocks not able to execute clear
+        #     else:
+        #         scrape.replace_stocks_being_processed(
+        #             self.raw_stocks_data,
+        #             "config_buy.yaml",
+        #             are_stocks_accepted=True,
+        #         )
+        #         self.stocks_being_processed += self.stocks_to_check_general_cost.copy()
 
-            self.set_raw_stocks_data()
-            self.set_stocks_quantity()
+        #     self.set_raw_stocks_data()
+        #     self.set_stocks_quantity()
             # self.set_stocks_to_check_general_cost()
 
-            if not self.stop_trigger:
-                if self.stocks_to_check_general_cost:
-                    for i in range(len(self.stocks_to_check_general_cost)):
-                        symbol = list(self.stocks_to_check_general_cost[i].keys())[0]
-                        stock_conditions = list(self.stocks_to_check_general_cost[i].values())[0]
-                        quantity = stock_conditions['quantity']
-                        percentage_drop = stock_conditions['trailing-drop-percent']
-                        percentage_rise = stock_conditions['trailing-up-percent']
-                        percentage_risk_avoidance = stock_conditions['percentage-risk-avoidance']
-                        args = (
-                            symbol,
-                            quantity,
-                            percentage_drop,
-                            percentage_rise,
-                            percentage_risk_avoidance,
-                            self.stocks_to_check_general_cost[i],
-                        )
-                        # asyncio.create_task(self.buy_stocks_with_risk_avoidance(*args))
-                        threading.Thread(
-                            target=self.process_stock, 
-                            name="stock_handler", 
-                            args=args
-                        ).start()
-                        self.stocks_being_processed.append(self.stocks_to_check_general_cost[i].copy()) 
-                        self.stocks_to_check_general_cost[i] = None
-                    while None in self.stocks_to_check_general_cost:
-                        self.stocks_to_check_general_cost.remove(None)
-                        # asyncio.create_task(self.buy_stocks_with_risk_avoidance(
-                        #     stock_ticker,
-                        #     symbol,
-                        #     quantity,
-                        #     percentage_drop,
-                        #     percentage_rise,
-                        #     percentage_risk_avoidance,
-                        #     self.stocks_being_processed[i],
-                        # ))
-                    # self.delete_processed_stocks_from_file("out.yaml")
+            # if not self.stop_trigger:
+            #     if self.stocks_to_check_general_cost:
+            #         for i in range(len(self.stocks_to_check_general_cost)):
+            #             symbol = list(self.stocks_to_check_general_cost[i].keys())[0]
+            #             stock_conditions = list(self.stocks_to_check_general_cost[i].values())[0]
+            #             quantity = stock_conditions['quantity']
+            #             drop_percent = stock_conditions['trailing-drop-percent']
+            #             rise_percent = stock_conditions['trailing-up-percent']
+            #             risk_avoidance_percent = stock_conditions['percentage-risk-avoidance']
+            #             args = (
+            #                 symbol,
+            #                 quantity,
+            #                 drop_percent,
+            #                 rise_percent,
+            #                 risk_avoidance_percent,
+            #                 self.stocks_to_check_general_cost[i],
+            #             )
+            #             # asyncio.create_task(self.buy_stocks_with_risk_avoidance(*args))
+            #             threading.Thread(
+            #                 target=self.process_stock, 
+            #                 name="stock_handler", 
+            #                 args=args
+            #             ).start()
+            #             self.stocks_being_processed.append(self.stocks_to_check_general_cost[i].copy()) 
+            #             self.stocks_to_check_general_cost[i] = None
+            #         while None in self.stocks_to_check_general_cost:
+            #             self.stocks_to_check_general_cost.remove(None)
+            #             # asyncio.create_task(self.buy_stocks_with_risk_avoidance(
+            #             #     stock_ticker,
+            #             #     symbol,
+            #             #     quantity,
+            #             #     drop_percent,
+            #             #     rise_percent,
+            #             #     risk_avoidance_percent,
+            #             #     self.stocks_being_processed[i],
+            #             # ))
+            #         # self.delete_processed_stocks_from_file("out.yaml")
 
         await asyncio.sleep(5)
 
@@ -594,20 +642,15 @@ class Stocks:
         time_to_sleep = 3 - (time.time() - previous_time)
         time.sleep(time_to_sleep if time_to_sleep else 0)
 
-    
-    def update_stocks_info_file(self, file_to_write):
-        yaml_representation = yaml.dump(self.stocks_being_processed)
-        with open(file_to_write, "w") as file:
-            file.write(yaml_representation)
 
 
     def process_stock(
         self,
         symbol, 
         quantity,
-        percentage_drop, 
-        percentage_rise, 
-        percentage_risk_avoidance,
+        drop_percent, 
+        rise_percent, 
+        risk_avoidance_percent,
         previous_max_price=0,
         # previous_drop_price=0,
     ):
@@ -628,9 +671,9 @@ class Stocks:
         # if stock is processed calculate drop price otherwise restore previous max price and drop price
         conditions_to_find = {
             'quantity': quantity,
-            'percentage_drop': percentage_drop,
-            'percentage_rise': percentage_rise,
-            'percentage_risk_avoidance': percentage_risk_avoidance,
+            'drop_percent': drop_percent,
+            'rise_percent': rise_percent,
+            'risk_avoidance_percent': risk_avoidance_percent,
         }
         for i in range(len(self.stocks_being_processed)):
             if list(self.stocks_being_processed[i].keys())[0] == symbol:
@@ -640,30 +683,35 @@ class Stocks:
         dict_to_update_info = list(self.stocks_being_processed[i].values())[0]
 
         max_price = previous_max_price
-        drop_price = max_price * ((100 - percentage_drop) / 100)
+        drop_price = max_price * ((100 - drop_percent) / 100)
 
         # main algorithm
         while True:
             self.sleep_for_some_time(current_time)
 
             # get new stock price till it becomes valid
-            current_stock_price = self.get_valid_current_price(symbol)
+            current_stock_price = 100 # self.get_valid_current_price(symbol)
 
             if current_stock_price > max_price:
                 # if current price exceeds max price set new max and drop ones 
                 # cause the shift in percentages between max price and drop prices is saved
                 max_price = current_stock_price
-                drop_price = max_price * ((100 - percentage_drop) / 100)
+                drop_price = max_price * ((100 - drop_percent) / 100)
                 dict_to_update_info['max_price'] = max_price
+                self.write_stocks_info_to_file("out.yaml")
 
             if current_stock_price <= drop_price:
                 # if stock dropped calculate price it needs to rise and start tracking when this happen make to buy
-                rise_price = drop_price * (1 + (percentage_rise / 100))
+                del dict_to_update_info["max_price"]
+                del dict_to_update_info["drop_percent"]
+                dict_to_update_info['drop_price'] = drop_price
+                self.write_stocks_info_to_file("out.yaml")
+
                 self.buy_with_risk_avoidance(
                     symbol,
                     quantity,
-                    percentage_rise,
-                    percentage_risk_avoidance,
+                    rise_percent,
+                    risk_avoidance_percent,
                     drop_price,
                 )
                 break
@@ -688,12 +736,25 @@ class Stocks:
         self, 
         symbol, 
         quantity,  
-        percentage_rise, 
-        percentage_risk_avoidance, 
+        rise_percent, 
+        risk_avoidance_percent, 
         drop_price,
     ):
         # if stock is processed first time restore previous max price and drop price otherwise calculate drop price
-        rise_price = drop_price * (1 + (percentage_rise / 100))
+        rise_price = drop_price * (1 + (rise_percent / 100))
+
+        conditions_to_find = {
+            'quantity': quantity,
+            'rise_percent': rise_percent,
+            'risk_avoidance_percent': risk_avoidance_percent,
+            'drop_price': drop_price,
+        }
+        for i in range(len(self.stocks_being_processed)):
+            if list(self.stocks_being_processed[i].keys())[0] == symbol:
+                if conditions_to_find.items() <= list(self.stocks_being_processed[i].values())[0].items():
+                    break
+
+        dict_to_update_info = list(self.stocks_being_processed[i].values())[0]
         
         current_time = time.time()
         while True:
@@ -719,9 +780,14 @@ class Stocks:
                     )
                     return
 
+                del dict_to_update_info["drop_price"]
+                del dict_to_update_info["rise_percent"]
                 max_price = current_stock_price
+                dict_to_update_info['max_price'] = max_price
+                self.write_stocks_info_to_file("config_buy.yaml")
+
                 self.provide_risk_avoidance(
-                    symbol, quantity, percentage_risk_avoidance, max_price,
+                    symbol, quantity, risk_avoidance_percent, max_price,
                 )
                 break
             current_time = time.time()
@@ -729,11 +795,24 @@ class Stocks:
 
 
     def provide_risk_avoidance(
-        self, symbol, quantity, percentage_risk_avoidance, max_price=0, 
+        self, symbol, quantity, risk_avoidance_percent, max_price=0, 
     ):
         current_time = time.time()
+
+        conditions_to_find = {
+            'quantity': quantity,
+            'risk_avoidance_percent': risk_avoidance_percent,
+            'max_price': max_price,
+        }
+        for i in range(len(self.stocks_being_processed)):
+            if list(self.stocks_being_processed[i].keys())[0] == symbol:
+                if conditions_to_find.items() <= list(self.stocks_being_processed[i].values())[0].items():
+                    break
+
+        dict_to_update_info = list(self.stocks_being_processed[i].values())[0]
+        
         # if stock is processed first time restore previous max price and drop price otherwise calculate drop price
-        alert_price = max_price * ((100 - percentage_risk_avoidance) / 100)
+        alert_price = max_price * ((100 - risk_avoidance_percent) / 100)
 
         while True:
             self.sleep_for_some_time(current_time)
@@ -742,7 +821,9 @@ class Stocks:
 
             if current_price > max_price:
                 max_price = current_price
-                alert_price = max_price * ((100 - percentage_risk_avoidance) / 100)
+                dict_to_update_info['max_price'] = max_price
+                self.write_stocks_info_to_file("config_buy.yaml")
+                alert_price = max_price * ((100 - risk_avoidance_percent) / 100)
 
             if current_price <= alert_price:
                 order, trade = self.loop.run_until_complete(
@@ -750,6 +831,8 @@ class Stocks:
                         symbol, False, quantity, "LMT", current_price * 0.98
                         )
                     )
+                del self.stocks_being_processed[i]
+                self.write_stocks_info_to_file("config_buy.yaml")
                 # self.write_orders_without_risk_avoidance(
                 #     "risk_avoidance.yaml", symbol, quantity, current_price
                 # )
@@ -768,9 +851,9 @@ class Stocks:
         stock_ticker,
         symbol, 
         quantity,   
-        percentage_drop, 
-        percentage_rise, 
-        percentage_risk_avoidance,
+        drop_percent, 
+        rise_percent, 
+        risk_avoidance_percent,
         stock_data,
     ):
         """
@@ -833,13 +916,13 @@ class Stocks:
                 max_stock_price = current_stock_price
 
             # new minimal price that stock drop needs to reach
-            drop_stock_price = max_stock_price * ((100 - percentage_drop) / 100)
+            drop_stock_price = max_stock_price * ((100 - drop_percent) / 100)
 
             # if stock dropped in price we need to set it's drop price in db and
             # price stock must to raise
             if current_stock_price <= drop_stock_price:
                 set_value_for_column_in_db(symbol, "drop_price", current_stock_price)
-                price_to_raise = drop_stock_price * (1 + (percentage_rise / 100))
+                price_to_raise = drop_stock_price * (1 + (rise_percent / 100))
 
                 while True:
                     if stop_trigger:
@@ -865,7 +948,7 @@ class Stocks:
                             if current_stock_price > max_stock_price:
                                 max_stock_price = current_stock_price
                             else:
-                                stop_order_price = max_stock_price * ((100 - percentage_risk_avoidance) / 100)
+                                stop_order_price = max_stock_price * ((100 - risk_avoidance_percent) / 100)
                                 if current_stock_price <= stop_order_price:
                                     place_order(symbol, False, quantity, "LMT", current_stock_price * 0.98)
                                     # logger.info(f"stock {symbol} is bough")
@@ -877,9 +960,9 @@ class Stocks:
     async def sell_stocks(
         symbol, 
         quantity,   
-        percentage_drop, 
-        percentage_rise, 
-        percentage_risk_avoidance,
+        drop_percent, 
+        rise_percent, 
+        risk_avoidance_percent,
         stock_data,
     ):
         """
@@ -914,7 +997,7 @@ class Stocks:
         if current_stock_price > max_stock_price or -0.1 < max_stock_price < 0.1:
             set_value_for_column_in_db(symbol, "max_price", current_stock_price)
             max_stock_price = current_stock_price
-        drop_stock_price = max_stock_price * ((100 - percentage_drop) / 100)
+        drop_stock_price = max_stock_price * ((100 - drop_percent) / 100)
 
         # main algorithm
         stop_trigger = False
@@ -936,13 +1019,13 @@ class Stocks:
                 max_stock_price = current_stock_price
 
             # new minimal price that stock drop needs to reach
-            drop_stock_price = max_stock_price * ((100 - percentage_drop) / 100)
+            drop_stock_price = max_stock_price * ((100 - drop_percent) / 100)
 
             # if stock dropped in price we need to set it's drop price in db and
             # price stock must to raise
             if current_stock_price <= drop_stock_price:
                 set_value_for_column_in_db(symbol, "drop_price", current_stock_price)
-                price_to_raise = drop_stock_price * (1 + (percentage_rise / 100))
+                price_to_raise = drop_stock_price * (1 + (rise_percent / 100))
 
                 while True:
                     if stop_trigger:
@@ -968,7 +1051,7 @@ class Stocks:
                             if current_stock_price > max_stock_price:
                                 max_stock_price = current_stock_price
                             else:
-                                sell_order_price = max_stock_price * ((100 - percentage_risk_avoidance) / 100)
+                                sell_order_price = max_stock_price * ((100 - risk_avoidance_percent) / 100)
                                 if current_stock_price <= sell_order_price:
                                     place_order(symbol, "SELL", quantity, "LMT", current_stock_price * 1.02)
                                 stop_trigger = True
