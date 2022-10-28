@@ -67,11 +67,6 @@ async def place_order(
     quantity,
     order_type,
     price=0,
-    lmt=0,
-    trailpct=0,
-    trailstop=0,
-    lmtPriceOffset=0,
-    aux=0
 ):
     """action: True if BUY, False if SELL"""
     contract = Stock(symbol, "SMART", "USD")
@@ -99,11 +94,6 @@ async def place_order(
         quantity,
         price,
         order_type,
-        lmt=lmt,
-        trailpct=0,
-        trailstop=trailstop,
-        lmtPriceOffset=lmtPriceOffset,
-        aux=aux
     )
     return trade
 
@@ -117,13 +107,19 @@ async def run():
         readonly=False,
         account="DU1820017",
     )
-    trade = await place_order("AMZN", False, 1, "LMT", lmt=114)
-    # trade_1 = await place_order("AMZN", True, 1, "LMT", lmt=110)
-    for _ in range(1):
-        print(trade[1].log[-1].status)
-        time.sleep(1)
-    # print(trade[0].contract.conId)
+    order, trade = await place_order("AMZN", True, 1, "LMT", price=115)
+    # while 
+    # # trade_1 = await place_order("AMZN", True, 1, "LMT", lmt=110)
+    # # print(app.ib.positions()[0].position)
+    # print("yes")
+    print("abc")
     print(Stock("AMZN", "SMART", "USD").conId)
+    print("def")
+    # for _ in range(15):
+    #     print(trade)
+    #     print("\n")
+    #     await asyncio.sleep(2)
+    # print(trade[0].contract.conId)
     # for i in range(5):
     #     print(trade)
     #     print(trade[1].log[-1].status)
@@ -139,6 +135,7 @@ async def run():
     #     print("\n")
     #     await asyncio.sleep(1)
     # while True:
+    #     print(trade)
     #     print(trade[0])
     #     # print(trade.order)
     #     print(trade[1].log[-1].status)
@@ -146,12 +143,12 @@ async def run():
     #     #     print(item)
     #     # print(trade, type(trade))
     #     await asyncio.sleep(2)
-import scrape
+# import scrape
 
-a = helpers.extract_data_from_yaml_file("restore.yaml")
-print(a)
-a = scrape.process_scraped_stock_data(a)
-print(a)
+# a = helpers.extract_data_from_yaml_file("restore.yaml")
+# print(a)
+# a = scrape.process_scraped_stock_data(a)
+# print(a)
 # print(a[1]['TSLA'].items() >= {'quantity': 4}.items())
 # print(a[1]['TSLA']['quantity'])
 # # print(list(a[1].values())[0].items())
@@ -180,6 +177,6 @@ print(a)
 #                 print(key, value, type(key), type(value))
 
 
-# asyncio.run(run())
+asyncio.run(run())
 
             

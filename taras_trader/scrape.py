@@ -6,8 +6,7 @@ sys.path.append("..")
 import time
 import requests
 import os
-# from taras_trader 
-import helpers
+from taras_trader import helpers
 # from cli import IBKRCmdlineApp as cmdline
 from ib_insync import Stock
 import collections
@@ -75,7 +74,7 @@ def replace_stocks_being_processed(
     patterns_dump_to_file = [collections.OrderedDict([
         ('fill', 'off'), 
         ('warning', 
-    "previous stocks are being processed, please, don't put other ones untill this title dissapears"),
+    "previous stocks are being processed, please, don't put other ones until this title dissapears"),
         ('order', {
             'buy': [
                 {"stocks": ""}, 
@@ -259,10 +258,9 @@ def process_scraped_stock_data(data_to_process):
                 stock_info[stock_symbol]["quantity"] = int(list(stock.values())[0])
             except:
                 stock_info[stock_symbol]["quantity"] = str(list(stock.values())[0])
-            stock_info[stock_symbol]["trailing-drop-percent"] = float(item['conditions'][1]['trailing-drop-percent'])
-            stock_info[stock_symbol]["trailing-up-percent"] = float(item['conditions'][2]['trailing-up-percent'])
-            stock_info[stock_symbol]["percentage-risk-avoidance"] = float(data_to_process['order']['sell'][1]['trailing-drop-percent'])
-            stock_info[stock_symbol]['time'] = time.time()
+            stock_info[stock_symbol]["drop_percent"] = float(item['conditions'][1]['trailing-drop-percent'])
+            stock_info[stock_symbol]["rise_percent"] = float(item['conditions'][2]['trailing-up-percent'])
+            stock_info[stock_symbol]["risk_avoidance_percent"] = float(data_to_process['order']['sell'][1]['trailing-drop-percent'])
             processed_data.append(stock_info)
 
     return processed_data

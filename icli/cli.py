@@ -671,6 +671,9 @@ class IBKRCmdlineApp:
 
         logger.info("[{}] Ordering {} via {}", contract.localSymbol, contract, order)
         trade = self.ib.placeOrder(contract, order)
+        print("\n")
+        print("trade")
+        print(trade)
 
         # TODO: add optional agent-like feature HERE to modify order in steps for buys (+price, -qty)
         #       or for sells (-price).
@@ -1003,6 +1006,9 @@ class IBKRCmdlineApp:
         logger.warning("News Tick: {}", news)
 
     def orderExecuteHandler(self, trade, fill):
+        print("abc")
+        print(trade)
+        print("def")
         logger.warning(
             "[{} :: {} :: {}] Trade executed for {}",
             trade.orderStatus.orderId,
