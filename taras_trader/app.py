@@ -1,9 +1,7 @@
 import sys
 sys.path.append("site-packages")
-from distutils.command.config import config
 from dotenv import dotenv_values
 import os
-import asyncio
 
 from taras_trader import cli
 

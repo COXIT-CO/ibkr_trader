@@ -48,8 +48,6 @@
 
 # ATTENTION: Stocks haven't been processes cause their price exceeds balance cash, stocks averall price - , balance cash -
 fill: 'off'
-warning: previous stocks are being processed, please, don't put other ones until this
-  title dissapears
 order:
   buy:
   - stocks: ''
