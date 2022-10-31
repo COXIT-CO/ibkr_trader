@@ -16,7 +16,6 @@ import re
 
 # http://www.grantjenks.com/docs/diskcache/
 import diskcache
-from taras_trader import scrape
 
 from taras_trader import orders
 import sys

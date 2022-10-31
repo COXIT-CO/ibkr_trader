@@ -1,6 +1,6 @@
 import sys
 
-from taras_trader import scrape
+from taras_trader import helpers
 sys.path.append("site-packages")
 
 # add lookup pattern to import anything from __init__.py module
@@ -173,14 +173,14 @@ class Stocks:
         # continue
 
         if 'fill' in cls.raw_stocks_data and cls.raw_stocks_data['fill'] == 'on':
-            cls.new_stocks = scrape.process_scraped_stock_data(cls.raw_stocks_data)
-            # cls.stocks_being_processed = scrape.process_scraped_stock_data(cls.raw_stocks_data)
+            cls.new_stocks = helpers.process_scraped_stock_data(cls.raw_stocks_data)
+            # cls.stocks_being_processed = helpers.process_scraped_stock_data(cls.raw_stocks_data)
             # print(cls.raw_stocks_data)
             # print(cls.raw_stocks_data)
-            scrape.replace_stocks_being_processed(cls.raw_stocks_data, file_to_read)
-            # scrape.write_orders_to_file(cls.new_stocks, file_to_write)
+            helpers.replace_stocks_being_processed(cls.raw_stocks_data, file_to_read)
+            # helpers.write_orders_to_file(cls.new_stocks, file_to_write)
             # cls.write_orders_to_file(cls.stocks_being_processed, file_to_write)
-            # scrape.write_orders_to_file(raw_stocks_data, path_to_file)
+            # helpers.write_orders_to_file(raw_stocks_data, path_to_file)
         # await asyncio.sleep(3)
 
 
@@ -188,7 +188,7 @@ class Stocks:
     def write_orders_to_file(cls, data_to_write, path_to_file):
         while True:
             cls.stop_trigger = True
-            scrape.write_orders_to_file(data_to_write, path_to_file)
+            helpers.write_orders_to_file(data_to_write, path_to_file)
             cls.stop_trigger = False
 
 
@@ -331,7 +331,7 @@ class Stocks:
 
 
     def extract_suspended_stocks(self, file_path):
-        self.suspended_stocks = scrape.process_suspended_stocks(
+        self.suspended_stocks = helpers.process_suspended_stocks(
             helpers.extract_data_from_yaml_file(file_path)
         )
 
@@ -365,7 +365,7 @@ class Stocks:
             # await asyncio.sleep(1000)
 
             if self.new_stocks:
-                scrape.replace_stocks_being_processed(
+                helpers.replace_stocks_being_processed(
                     self.raw_stocks_data,
                     "config_buy.yaml",
                     are_stocks_accepted=True,
@@ -390,7 +390,7 @@ class Stocks:
 
                 if True: #does_stocks_cost_exceed_balance:
                     print(self.raw_stocks_data)
-                    scrape.replace_stocks_being_processed(
+                    helpers.replace_stocks_being_processed(
                         self.raw_stocks_data,
                         "config_buy.yaml",
                         10,
@@ -408,7 +408,7 @@ class Stocks:
                     self.set_stop_trigger(True)
                     # make all collections holding data about stocks not able to execute clear
                 else:
-                    scrape.replace_stocks_being_processed(
+                    helpers.replace_stocks_being_processed(
                         self.raw_stocks_data,
                         "config_buy.yaml",
                     )
