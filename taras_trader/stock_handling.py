@@ -1,12 +1,6 @@
-import sys
-
 from taras_trader import helpers
-sys.path.append("site-packages")
 
 # add lookup pattern to import anything from __init__.py module
-sys.path.append("..")
-
-# from taras_trader import logger
 
 from dataclasses import (
     dataclass,
@@ -14,26 +8,18 @@ from dataclasses import (
 )
 
 # from taras_trader.app import logger
-import sys
 import oyaml as yaml
 import math
 import time
 import datetime
 import threading
-import multiprocessing
 from typing import List, Union
 
 from dataclasses import dataclass, field
 import datetime
 
-import fnmatch  # for glob string matching!
-from typing import Literal, Union, Optional, Sequence, Any, Mapping
+from typing import Union
 
-import numpy as np
-
-import pendulum
-
-import pandas as pd
 from dataclasses import dataclass
 
 from taras_trader import helpers
@@ -41,21 +27,12 @@ from taras_trader import app
 
 # from helpers import extract_data_from_yaml_file
 
-import ib_insync
 from ib_insync import (
     IB,
     Stock,
     Ticker,
 )
 import asyncio
-
-import logging
-
-import seaborn
-
-import psycopg2
-
-# from app import app
 
 # Configure logger where the ib_insync live service logs get written.
 # Note: if you have weird problems you don't think are being exposed
