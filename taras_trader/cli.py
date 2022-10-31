@@ -20,7 +20,6 @@ from taras_trader import scrape
 
 from taras_trader import orders
 import sys
-from taras_trader import place_order
 
 from collections import Counter, defaultdict
 from dataclasses import dataclass, field
@@ -1779,6 +1778,7 @@ class IBKRCmdlineApp:
         loop.create_task(updateToolbar())
 
         # Primary REPL loop
+        from taras_trader import place_order
         stock = place_order.Stocks()
         stock.set_ib(self.ib)
         stock.set_loop(loop)

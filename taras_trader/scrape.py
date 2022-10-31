@@ -105,17 +105,17 @@ def replace_stocks_being_processed(
     f"stocks haven't been processes cause their price exceeds balance cash, \nstocks averall price - {stocks_cost}, balance cash -{balance_cash}, \nif you still want to proceed these stocks, please, consider their quantity"),
     ])]
 
-    if stocks_data is None or "fill" not in stocks_data or stocks_data["fill"] != "on":
-        return None
     if are_stocks_accepted:
         data_to_dump = patterns_dump_to_file[1]
-    if stocks_cost and balance_cash:
+    elif stocks_cost and balance_cash:
         stocks_data_copy = stocks_data.copy()
         del stocks_data_copy['fill']
         patterns_dump_to_file[2].update(OrderedDict(stocks_data_copy))
         data_to_dump = patterns_dump_to_file[2]
     else:
         data_to_dump = patterns_dump_to_file[0]
+    # if stocks_data is None or "fill" not in stocks_data or stocks_data["fill"] != "on":
+    #     return None
 
     # data_to_dump['fill'] = "off"
     # data_to_dump['warning'] = "previous stocks are being processed, please, don't put other ones untill this title dissapears"
@@ -262,6 +262,19 @@ def process_scraped_stock_data(data_to_process):
             stock_info[stock_symbol]["rise_percent"] = float(item['conditions'][2]['trailing-up-percent'])
             stock_info[stock_symbol]["risk_avoidance_percent"] = float(data_to_process['order']['sell'][1]['trailing-drop-percent'])
             processed_data.append(stock_info)
+
+    return processed_data
+
+
+def process_suspended_stocks(data):
+    processed_data = []
+
+    for item in data:
+        symbol = list(item.keys())[0]
+        conditions = list(item.values())[0][0]
+        processed_data.append(
+            {symbol: conditions},
+        )
 
     return processed_data
 

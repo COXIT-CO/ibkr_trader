@@ -5,7 +5,7 @@ from dotenv import dotenv_values
 import os
 import asyncio
 
-import cli
+from taras_trader import cli
 
 from loguru import logger
 
@@ -39,8 +39,8 @@ PORT = int(CONFIG["ICLI_IBKR_PORT"])  # type: ignore
 # REFRESH = float(CONFIG["ICLI_REFRESH"])  # type: ignore
 
 app = cli.IBKRCmdlineApp(
-        accountId=ACCOUNT_ID, host=HOST, port=PORT
-    )  
+    accountId=ACCOUNT_ID, host=HOST, port=PORT
+)  
 
 # async def a():
 #     await app.setup()
