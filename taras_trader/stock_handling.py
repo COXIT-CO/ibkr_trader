@@ -207,7 +207,7 @@ class Stocks:
         return time_now_seconds
 
 
-    def is_stocks_cost_affordable(self):
+    async def is_stocks_cost_affordable(self):
         """given all the stock being not yet processed define
         if their total cost affordable to buy on current balance cash"""
         total_cost = 0
@@ -218,10 +218,7 @@ class Stocks:
                     if isinstance(quantity, str) and quantity.startswith("$"):
                         total_cost += int(quantity[1:])
                     else:
-                        current_price = self.current_stock_prices[stock_symbol]
-                        while current_price is None or current_price <= 0:
-                            time.sleep(2.5)
-                            current_price = self.current_stock_prices[stock_symbol]
+                        current_price = await self.get_valid_current_price(stock_symbol)
                         total_cost += current_price * int(quantity)
             time_2 = self.get_time_in_seconds()
             if time_2 - time_1 <= 10:
@@ -315,7 +312,7 @@ class Stocks:
 
     def start_following_stock(self, stock_symbol):
         self.stock_tickers[stock_symbol] = self.subscribe_stock_market_data(stock_symbol)
-        self.loop.create_task(self.infinitely_get_stock_price(stock_symbol))
+        asyncio.create_task(self.infinitely_get_stock_price(stock_symbol))
 
 
     def stop_following_stock(self, stock_symbol):
@@ -339,17 +336,8 @@ class Stocks:
                 self.set_is_suspended_stocks_processed(True)
 
             self.process_new_orders("taras_trader/config_buy.yaml")
-            # await asyncio.sleep(1000)
 
             if self.new_stocks:
-                helpers.replace_stocks_being_processed(
-                    self.raw_stocks_data,
-                    "config_buy.yaml",
-                    are_stocks_accepted=True,
-                )
-                # print(self.stocks_quantity.get("AAPL", []))
-                # await asyncio.sleep(1000)
-
                 for i in range(len(self.new_stocks)):
                     symbol = list(self.new_stocks[i].keys())[0]
                     if symbol not in self.subscribes_per_stock or not self.subscribes_per_stock[symbol]:
@@ -360,26 +348,23 @@ class Stocks:
                 
                 await asyncio.sleep(0.5)
 
-                does_stocks_cost_exceed_balance, balance_cash, total_stocks_cost = self.is_stocks_cost_affordable()
+                does_stocks_cost_exceed_balance, balance_cash, total_stocks_cost = await self.is_stocks_cost_affordable()
 
-                print(does_stocks_cost_exceed_balance)
-                await asyncio.sleep(1000)
-
-                if True: #does_stocks_cost_exceed_balance:
+                if does_stocks_cost_exceed_balance:
                     print(self.raw_stocks_data)
                     helpers.replace_stocks_being_processed(
                         self.raw_stocks_data,
                         "taras_trader/config_buy.yaml",
-                        10,
-                        20,
+                        balance_cash,
+                        total_stocks_cost,
                     )
                     await asyncio.sleep(1000)
 
                     # discard all subscriptions from stocks no more used
                     # and remove them from dictionaries holding their data
-                    for stock_symbol, subscription_count in self.subscribes_per_stock.copy().items():
+                    for stock_symbol in self.subscribes_per_stock.copy():
                         self.subscribes_per_stock[stock_symbol] -= 1
-                        if not subscription_count:
+                        if not self.subscribes_per_stock[stock_symbol]:
                             self.stop_following_stock(stock_symbol)
                     
                     self.set_stop_trigger(True)
@@ -388,12 +373,13 @@ class Stocks:
                     helpers.replace_stocks_being_processed(
                         self.raw_stocks_data,
                         "taras_trader/config_buy.yaml",
+                        are_stocks_accepted=True,
                     )
                     self.stocks_being_processed += self.new_stocks.copy()
 
                 # self.set_raw_stocks_data()
                 self.set_stocks_quantity()
-                # self.set_new_stocks()
+                self.set_new_stocks()
 
                 if not self.stop_trigger:
                     if self.new_stocks:
@@ -432,15 +418,14 @@ class Stocks:
                 file.write(line)
 
 
-    def get_valid_current_price(self, symbol):
+    async def get_valid_current_price(self, symbol):
         # return self.current_stock_prices[symbol] is not None
-        time.sleep(1)
         current_stock_price = self.current_stock_prices[symbol]
         
         while self.current_stock_prices[symbol] is None:
-            time.sleep(2.5)
+            await asyncio.sleep(2.5)
             current_stock_price = self.current_stock_prices[symbol]
-
+        
         return current_stock_price
 
 
