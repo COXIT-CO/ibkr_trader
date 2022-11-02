@@ -198,6 +198,7 @@ class Stocks:
             await asyncio.sleep(3)
 
 
+
     @staticmethod
     def get_time_in_seconds():
         time_now = datetime.datetime.now()
@@ -281,6 +282,7 @@ class Stocks:
             )
             
             # process stock in separate thread
+            asyncio.create_task(function_to_start_from(*ordered_stock_conditions))
             # threading.Thread(
             #     target=function_to_start_from, 
             #     name="stock_handler", 
@@ -329,13 +331,12 @@ class Stocks:
         )
 
         while True:
-            if not self.is_suspended_stocks_processed:
+            if True: #not self.is_suspended_stocks_processed:
                 self.extract_suspended_stocks("taras_trader/restore.yaml")
                 self.process_suspended_stocks()
-                await asyncio.sleep(1000)
                 self.set_is_suspended_stocks_processed(True)
 
-            self.process_new_orders("taras_trader/config_buy.yaml")
+            # self.process_new_orders("taras_trader/config_buy.yaml")
 
             if self.new_stocks:
                 for i in range(len(self.new_stocks)):
@@ -380,11 +381,11 @@ class Stocks:
                         stock_conditions = list(self.new_stocks[i].values())[0]
                         args = self.set_proper_conditions_order(symbol, stock_conditions)
 
-                        threading.Thread(
-                            target=self.process_stock, 
-                            name="stock_handler", 
-                            args=args
-                        ).start()
+                        # threading.Thread(
+                        #     target=self.process_stock, 
+                        #     name="stock_handler", 
+                        #     args=args
+                        # ).start()
 
                         self.stocks_being_processed.append(self.new_stocks[i].copy())
 
@@ -393,7 +394,7 @@ class Stocks:
 
                 self.set_new_stocks()
 
-            await asyncio.sleep(10)
+            await asyncio.sleep(100000)
 
 
     @staticmethod
@@ -424,13 +425,13 @@ class Stocks:
     @staticmethod
     def sleep_for_some_time(time_1, time_2):
         """sleep 3 seconds minus time needed to make one loop iteration"""
+        time_delta = time_2 - time_1
+        time_to_sleep = 3 - (time_delta.seconds + time_delta.microseconds / 1_000_000)
+        return time_to_sleep if time_to_sleep > 0 else 0
 
-        time_to_sleep = 3 - (time_2 - time_1)
-        time.sleep(time_to_sleep if time_to_sleep else 0)
 
 
-
-    def process_stock(
+    async def process_stock(
         self,
         symbol, 
         quantity,
@@ -450,7 +451,8 @@ class Stocks:
         (if stock raises from current price we will sell it when (max price - z percentages) 
         price is reached otherwise we sell stock when it drops z percentages from price in moment we bought it)
         """
-        time_1 = self.get_time_in_seconds()
+        await asyncio.sleep(0.5)
+        # time_1 = self.get_time_in_seconds()
         # current_stock_price = self.get_valid_current_price(symbol)
         # max_stock_price = previous_max_stock_price
 
@@ -469,12 +471,13 @@ class Stocks:
         dict_to_update_info = list(self.stocks_being_processed[i].values())[0]
 
         max_price = previous_max_price
-        drop_price = max_price * ((100 - drop_percent) / 100)
+        drop_price = 300 #max_price * ((100 - drop_percent) / 100)
 
+        time_1 = datetime.datetime.now()
         # main algorithm
         while True:
             # get new stock price till it becomes valid
-            current_stock_price = self.get_valid_current_price(symbol)
+            current_stock_price = await self.get_valid_current_price(symbol)
 
             if current_stock_price > max_price:
                 # if current price exceeds max price set new max and drop ones 
@@ -489,7 +492,7 @@ class Stocks:
                 del dict_to_update_info["max_price"]
                 del dict_to_update_info["drop_percent"]
                 dict_to_update_info['drop_price'] = drop_price
-                self.update_stocks_info_file("taras_trader/out.yaml")
+                self.update_stocks_info_file("taras_trader/restore.yaml")
 
                 self.buy_with_risk_avoidance(
                     symbol,
@@ -499,10 +502,11 @@ class Stocks:
                     drop_price,
                 )
                 break
+            
+            time_2 = datetime.datetime.now()
+            await asyncio.sleep(self.sleep_for_some_time(time_1, time_2))
+            time_1 = datetime.datetime.now()
 
-            time_2 = self.get_time_in_seconds()
-            self.sleep_for_some_time(time_1, time_2)
-            time_1 = self.get_time_in_seconds()
 
 
     def check_for_order_to_fill(
@@ -519,7 +523,7 @@ class Stocks:
 
 
 
-    def buy_with_risk_avoidance(
+    async def buy_with_risk_avoidance(
         self, 
         symbol, 
         quantity,  
@@ -543,10 +547,11 @@ class Stocks:
 
         dict_to_update_info = list(self.stocks_being_processed[i].values())[0]
         
-        self.update_stocks_info_file("taras_trader/out.yaml")
-        time_1 = self.get_time_in_seconds()
+        # self.update_stocks_info_file("taras_trader/out.yaml")
+        time_1 = datetime.datetime.now()
+        # main algorithm
         while True:
-            current_stock_price = self.get_valid_current_price(symbol)
+            current_stock_price = await self.get_valid_current_price(symbol)
 
             # if price raised buy it and make an order sell it when it drops to provide risk-avoidance
             if current_stock_price >= rise_price:
@@ -577,9 +582,9 @@ class Stocks:
                 )
                 break
             
-            time_2 = self.get_time_in_seconds()
-            self.sleep_for_some_time(time_1, time_2)
-            time_1 = self.get_time_in_seconds()
+            time_2 = datetime.datetime.now()
+            await asyncio.sleep(self.sleep_for_some_time(time_1, time_2))
+            time_1 = datetime.datetime.now()
 
 
 
