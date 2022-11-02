@@ -1,5 +1,3 @@
-import sys
-sys.path.append("site-packages")
 from dotenv import dotenv_values
 import os
 
