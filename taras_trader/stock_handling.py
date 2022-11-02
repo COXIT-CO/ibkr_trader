@@ -204,7 +204,7 @@ class Stocks:
         time_now = datetime.datetime.now()
         # we include not just nake seconds,
         # but also miliseconds to get more precise representation
-        time_now_seconds = time_now.second + time_now.microsecond / 100_000
+        time_now_seconds = time_now.second + time_now.microsecond / 1_000_000
         return time_now_seconds
 
 
@@ -556,11 +556,9 @@ class Stocks:
             # if price raised buy it and make an order sell it when it drops to provide risk-avoidance
             if current_stock_price >= rise_price:
                 # buy stock as a limit with 102 percentages price to fill the order immediately
-                order, trade = self.loop.run_until_complete(
-                    place_order(
+                order, trade = await place_order(
                         symbol, True, quantity, lmt=current_stock_price * 1.02,
                     )
-                )
                 if not self.check_for_order_to_fill(
                     symbol, quantity, trade, order, self.get_time_in_seconds(),
                 ):
