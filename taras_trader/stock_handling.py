@@ -60,7 +60,7 @@ class Stocks:
     summary = {}
     stop_trigger = False
     stop_write_flag = False
-    is_suspended_stocks_processed = True
+    is_suspended_stocks_processed = False
     ib: IB = field(default_factory=IB)
     loop = None
     accountStatus: dict[str, float] = field(
@@ -281,11 +281,11 @@ class Stocks:
             )
             
             # process stock in separate thread
-            threading.Thread(
-                target=function_to_start_from, 
-                name="stock_handler", 
-                args=ordered_stock_conditions
-            ).start()
+            # threading.Thread(
+            #     target=function_to_start_from, 
+            #     name="stock_handler", 
+            #     args=ordered_stock_conditions
+            # ).start()
 
 
 
@@ -332,6 +332,7 @@ class Stocks:
             if not self.is_suspended_stocks_processed:
                 self.extract_suspended_stocks("taras_trader/restore.yaml")
                 self.process_suspended_stocks()
+                await asyncio.sleep(1000)
                 self.set_is_suspended_stocks_processed(True)
 
             self.process_new_orders("taras_trader/config_buy.yaml")
