@@ -1,3 +1,4 @@
+from re import I
 from taras_trader import helpers
 
 # add lookup pattern to import anything from __init__.py module
@@ -398,16 +399,33 @@ class Stocks:
 
 
     @staticmethod
-    def inform_about_unfilled_stock(path_to_file, pattern, message_to_write):
+    def inform_about_unfilled_stock(path_to_file, stock_data, message_to_write):
         lines = []
+        line_index_to_insert_comment = 0
         with open(path_to_file, "r") as file:
+            counter = 0
             for line in file:
+                if 'fill' in line:
+                    line_index_to_insert_comment = counter
                 lines.append(line)
+                counter += 1
+        stock_data_to_write = ''
+        
+        for symbol, conditions in stock_data.copy().items():
+            del conditions['drop_price']
+            stock_data_to_write += f'# - {symbol}\n'
+            for condition, value in conditions.items():
+                stock_data_to_write += f'#    - {condition}: {value}\n'
+
+        lines_to_write = [
+            *lines[:line_index_to_insert_comment],
+            f"# {message_to_write}",
+            stock_data_to_write,
+            *lines[line_index_to_insert_comment:],
+        ]
         with open(path_to_file, "w") as file:
-            for line in lines:
-                if pattern in line and not line.startswith("#"):
-                    line = line.replace("\n", "") + f"  <-- {message_to_write}\n"
-                file.write(line)
+            file.writelines(lines_to_write)
+
 
 
     async def get_valid_current_price(self, symbol):
@@ -423,11 +441,11 @@ class Stocks:
 
 
     @staticmethod
-    def sleep_for_some_time(time_1, time_2):
+    def find_time_shift(start_time, actual_time):
         """sleep 3 seconds minus time needed to make one loop iteration"""
-        time_delta = time_2 - time_1
-        time_to_sleep = 3 - (time_delta.seconds + time_delta.microseconds / 1_000_000)
-        return time_to_sleep if time_to_sleep > 0 else 0
+        time_delta = actual_time - start_time
+        time_shift = 3 - (time_delta.seconds + time_delta.microseconds / 1_000_000)
+        return time_shift if time_shift > 0 else 0
 
 
 
@@ -471,9 +489,9 @@ class Stocks:
         dict_to_update_info = list(self.stocks_being_processed[i].values())[0]
 
         max_price = previous_max_price
-        drop_price = 300 #max_price * ((100 - drop_percent) / 100)
+        drop_price = max_price * ((100 - drop_percent) / 100)
 
-        time_1 = datetime.datetime.now()
+        start_time = datetime.datetime.now()
         # main algorithm
         while True:
             # get new stock price till it becomes valid
@@ -494,31 +512,33 @@ class Stocks:
                 dict_to_update_info['drop_price'] = drop_price
                 self.update_stocks_info_file("taras_trader/restore.yaml")
 
-                self.buy_with_risk_avoidance(
-                    symbol,
-                    quantity,
-                    rise_percent,
-                    risk_avoidance_percent,
-                    drop_price,
+                asyncio.create_task(
+                    self.buy_with_risk_avoidance(
+                        symbol,
+                        quantity,
+                        rise_percent,
+                        risk_avoidance_percent,
+                        drop_price,
+                    )
                 )
                 break
             
-            time_2 = datetime.datetime.now()
-            await asyncio.sleep(self.sleep_for_some_time(time_1, time_2))
-            time_1 = datetime.datetime.now()
+            await asyncio.sleep(self.find_time_shift(start_time, datetime.datetime.now()))
+            start_time = datetime.datetime.now()
 
 
 
-    def check_for_order_to_fill(
-        self, trade, order, current_time
+    async def check_for_order_to_fill(
+        self, trade, order, start_time
     ):
         """check for order to fill within 15 minutes otherwise cancel it"""
         while trade.log[-1].status != "Filled":
-            if self.get_time_in_seconds() - current_time >= 900:
+            time_difference = self.find_time_shift(start_time, datetime.datetime.now())
+            if time_difference >= 300:
                 # if order hasn't been bought for more that 15 minutes cancel it
                 self.ib.cancelOrder(order)
-                return
-            time.sleep(1)
+                return False
+            await asyncio.sleep(1.5)
         return True
 
 
@@ -532,6 +552,7 @@ class Stocks:
         drop_price,
     ):
         # if stock is processed first time restore previous max price and drop price otherwise calculate rise price
+        await asyncio.sleep(0.5)
         rise_price = drop_price * (1 + (rise_percent / 100))
 
         conditions_to_find = {
@@ -548,25 +569,28 @@ class Stocks:
         dict_to_update_info = list(self.stocks_being_processed[i].values())[0]
         
         # self.update_stocks_info_file("taras_trader/out.yaml")
-        time_1 = datetime.datetime.now()
+        start_time = datetime.datetime.now()
         # main algorithm
         while True:
             current_stock_price = await self.get_valid_current_price(symbol)
 
             # if price raised buy it and make an order sell it when it drops to provide risk-avoidance
-            if current_stock_price >= rise_price:
+            if current_stock_price >= 100: #rise_price:
                 # buy stock as a limit with 102 percentages price to fill the order immediately
-                order, trade = await place_order(
-                        symbol, True, quantity, lmt=current_stock_price * 1.02,
-                    )
-                if not self.check_for_order_to_fill(
-                    symbol, quantity, trade, order, self.get_time_in_seconds(),
-                ):
+                # order, trade = await place_order(
+                #         symbol, True, quantity, lmt=current_stock_price * 1.02,
+                #     )
+                # is_order_executed = await self.check_for_order_to_fill(
+                #     symbol, quantity, trade, order, datetime.now(),
+                # )
+                if True: #not is_order_executed:
                     self.inform_about_unfilled_stock(
-                        "taras_trader/config_buy.yaml", 
-                        f"{symbol}: {quantity}", 
-                        "order was pending fill for 15 minutes, so isn't executed"
+                        "taras_trader/config_buy.yaml",
+                        self.stocks_being_processed[i],
+                        "ATTERNTION!!! order was pending fill for more than 5 minutes, so isn't executed\n"
                     )
+                    del self.stocks_being_processed[i]
+                    await asyncio.sleep(1000)
                     return
 
                 del dict_to_update_info["drop_price"]
@@ -575,20 +599,22 @@ class Stocks:
                 dict_to_update_info['max_price'] = max_price
                 self.update_stocks_info_file("taras_trader/out.yaml")
 
-                self.provide_risk_avoidance(
-                    symbol, quantity, risk_avoidance_percent, max_price,
+                asyncio.create_task(
+                    self.provide_risk_avoidance(
+                        symbol, quantity, risk_avoidance_percent, max_price,
+                    )
                 )
                 break
             
-            time_2 = datetime.datetime.now()
-            await asyncio.sleep(self.sleep_for_some_time(time_1, time_2))
-            time_1 = datetime.datetime.now()
+            await asyncio.sleep(self.find_time_shift(start_time, datetime.datetime.now()))
+            start_time = datetime.datetime.now()
 
 
 
-    def provide_risk_avoidance(
+    async def provide_risk_avoidance(
         self, symbol, quantity, risk_avoidance_percent, max_price=0, 
     ):
+        await asyncio.sleep(0.5)
         conditions_to_find = {
             'quantity': quantity,
             'risk_avoidance_percent': risk_avoidance_percent,
@@ -604,7 +630,7 @@ class Stocks:
         # if stock is processed first time restore previous max price and drop price otherwise calculate alert price
         alert_price = max_price * ((100 - risk_avoidance_percent) / 100)
 
-        time_1 = self.get_time_in_seconds()
+        start_time = datetime.datetime.now()
         while True:
             current_price = self.get_valid_current_price(symbol)
 
@@ -633,9 +659,8 @@ class Stocks:
                 # logger.info(f"stock {symbol} is bough")
                 break
             
-            time_2 = self.get_time_in_seconds()
-            self.sleep_for_some_time(time_1, time_2)
-            time_1 = self.get_time_in_seconds()
+            await asyncio.sleep(self.find_time_shift(start_time, datetime.datetime.now()))
+            start_time = datetime.datetime.now()
         
 
 
