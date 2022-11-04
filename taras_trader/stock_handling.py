@@ -180,15 +180,19 @@ class Stocks:
 
 
     def subscribe_market_data(self):
+        """set requesting market data of type 2 (real-time data) 
+        https://interactivebrokers.github.io/tws-api/market_data_type.html"""
         self.ib.reqMarketDataType(2)
 
 
     def subscribe_stock_market_data(self, stock_symbol):
+        """subscribe stock to request market data"""
         contract = Stock(stock_symbol, "SMART", "USD")
         return self.ib.reqMktData(contract, helpers.tickFieldsForContract(contract))
 
 
     async def infinitely_get_stock_price(self, symbol):
+        """continually get current stock price """
         self.current_stock_prices[symbol] = None
         while True:
             if symbol not in self.stock_tickers:
@@ -210,8 +214,8 @@ class Stocks:
 
 
     async def is_stocks_cost_affordable(self):
-        """given all the stock being not yet processed define
-        if their total cost affordable to buy on current balance cash"""
+        """given all the stocks not yet processed define
+        if their total cost affordable having current balance"""
         total_cost = 0
         while True:
             time_1 = self.get_time_in_seconds()
@@ -223,6 +227,8 @@ class Stocks:
                         current_price = await self.get_valid_current_price(stock_symbol)
                         total_cost += current_price * int(quantity)
             time_2 = self.get_time_in_seconds()
+            # if it took nore than 10 seconds to calculate total cost 
+            # do it again to assure actual stock prices esle return the results
             if time_2 - time_1 <= 10:
                 break
             time.sleep(time_2 - time_1)
@@ -245,7 +251,7 @@ class Stocks:
 
 
     def set_proper_conditions_order(self, stock_symbol, stock_conditions):
-        """set stock conditions on proper order cause stock-handling functions
+        """set proper stock conditions order cause stock-handling functions
         preserve order"""
         possible_ordered_conditions = (
             'quantity', 'drop_percent', 'trailing-drop-percent', 
@@ -263,6 +269,12 @@ class Stocks:
 
 
     def process_suspended_stocks(self):
+        """
+        for every suspended stock set proper conditions order 
+        cause all 3 sub-functions of main stock-handling algorithm accept arguments as positional ones in specific order (take a look),
+        so it's our task to preserve proper arguments order rather than count on that it's already done (cause yaml i/o operations can mess him),
+        then depending on stock conditions determine one of 3 main stock-handling algorithm sub-functions and start stock processing from it
+        """
         for stock_data in self.suspended_stocks:
             stock_symbol = list(stock_data.keys())[0]
             conditions = list(stock_data.values())[0]
@@ -292,9 +304,14 @@ class Stocks:
 
 
 
-    def update_stocks_info_file(self, path_to_file):
+    def update_stocks_file_info(self, path_to_file):
+        """
+        update actual stocks info in config file by provided path
+        this function is synchronizing which means that if two parts of code try to update info in file
+        one of them will wait for other to complete
+        """
         while self.stop_write_flag:
-            time.sleep(2)
+            time.sleep(1.5)
         self.set_stop_write_flag(True)
         data_to_dump = []
         for stock_data in self.stocks_being_processed:
@@ -308,25 +325,32 @@ class Stocks:
 
 
     def extract_suspended_stocks(self, file_path):
+        """extract suspended stocks data from config file"""
         self.suspended_stocks = helpers.process_suspended_stocks(
             helpers.extract_data_from_yaml_file(file_path)
         )
 
 
     def start_following_stock(self, stock_symbol):
+        # start requesting market data about stock and infinitely getting its current price
         self.stock_tickers[stock_symbol] = self.subscribe_stock_market_data(stock_symbol)
         asyncio.create_task(self.infinitely_get_stock_price(stock_symbol))
 
 
     def stop_following_stock(self, stock_symbol):
+        # if stock with symbol is no more needed cancel requesting market data about it
+        # and delete any data related to it
         self.ib.cancelMktData(Stock(stock_symbol, "SMART", "USD"))
         del self.stock_tickers[stock_symbol]
         del self.current_stock_prices[stock_symbol]
 
 
     async def run(self):
+        """
+        starting point to program execution
+        """
         self.ib.accountSummaryEvent += self.updateSummary
-
+        # request account info such as balance
         await asyncio.gather(
             self.ib.reqAccountSummaryAsync(),  # self.ib.reqPnLAsync()
         )
@@ -390,7 +414,7 @@ class Stocks:
 
                         self.stocks_being_processed.append(self.new_stocks[i].copy())
 
-                    self.update_stocks_info_file("taras_trader/restore.yaml")
+                    self.update_stocks_file_info("taras_trader/restore.yaml")
                     self.set_stop_trigger(False)
 
                 self.set_new_stocks()
@@ -400,6 +424,11 @@ class Stocks:
 
     @staticmethod
     def inform_about_unfilled_stock(path_to_file, stock_data, message_to_write):
+        """
+        if order is not executed within 5 minutes we need to cancel it and 
+        notify user about it in config file residing in 'path_to_file'
+        """
+        # read lines from file to 'lines' and determine the line holding 'fill' word
         lines = []
         line_index_to_insert_comment = 0
         with open(path_to_file, "r") as file:
@@ -411,12 +440,15 @@ class Stocks:
                 counter += 1
         stock_data_to_write = ''
         
+        # convert 'stock_data' to yaml and make commented
         for symbol, conditions in stock_data.copy().items():
             del conditions['drop_price']
             stock_data_to_write += f'# - {symbol}\n'
             for condition, value in conditions.items():
                 stock_data_to_write += f'#    - {condition}: {value}\n'
 
+        # proper order of new lines to write to file: 
+        # actually we insert commented 'stock_data' with warning between previously extracted lines
         lines_to_write = [
             *lines[:line_index_to_insert_comment],
             f"# {message_to_write}",
@@ -429,7 +461,6 @@ class Stocks:
 
 
     async def get_valid_current_price(self, symbol):
-        # return self.current_stock_prices[symbol] is not None
         current_stock_price = self.current_stock_prices[symbol]
         
         while self.current_stock_prices[symbol] is None:
@@ -442,7 +473,7 @@ class Stocks:
 
     @staticmethod
     def find_time_shift(start_time, actual_time):
-        """sleep 3 seconds minus time needed to make one loop iteration"""
+        """return 3 seconds minus time needed to make one loop iteration ('actual_time' - 'start_time')"""
         time_delta = actual_time - start_time
         time_shift = 3 - (time_delta.seconds + time_delta.microseconds / 1_000_000)
         return time_shift if time_shift > 0 else 0
@@ -457,30 +488,25 @@ class Stocks:
         rise_percent, 
         risk_avoidance_percent,
         previous_max_price=0,
-        # previous_drop_price=0,
     ):
         """
-        1. get current stock price, compare it to max price in database
-        if it exceeds than renew max price in database
-        2. if stock price drops x percentages start checking if it grows up y percentages
-        otherwise wait untill it drops
-        3. if stock price raised y percentages, buy it
-        4. after purchase sell it as a trailing limit with z percentages
-        (if stock raises from current price we will sell it when (max price - z percentages) 
-        price is reached otherwise we sell stock when it drops z percentages from price in moment we bought it)
+        starting point of main stock-handling algorithm
+        1. continuously get current stock price (every 3 seconds - time needed to make one loop itaration)
+        2. if it exceeds last max price than renew it
+        3. if it is less than drop price it means that stock dropped 'drop_percent' 
+            and we can move to 2 part of all stock-handling algorithm
+        important thing is that we write down all the changes to config file
         """
         await asyncio.sleep(0.5)
-        # time_1 = self.get_time_in_seconds()
-        # current_stock_price = self.get_valid_current_price(symbol)
-        # max_stock_price = previous_max_stock_price
 
-        # if stock is processed calculate drop price otherwise restore previous max price and drop price
+        # stock properties to compare with
         conditions_to_find = {
             'quantity': quantity,
             'drop_percent': drop_percent,
             'rise_percent': rise_percent,
             'risk_avoidance_percent': risk_avoidance_percent,
         }
+        # iterate through stocks holding dictionary and stop when stock data will match above one
         for i in range(len(self.stocks_being_processed)):
             if list(self.stocks_being_processed[i].keys())[0] == symbol:
                 if conditions_to_find.items() <= list(self.stocks_being_processed[i].values())[0].items():
@@ -492,25 +518,23 @@ class Stocks:
         drop_price = max_price * ((100 - drop_percent) / 100)
 
         start_time = datetime.datetime.now()
-        # main algorithm
         while True:
             # get new stock price till it becomes valid
             current_stock_price = await self.get_valid_current_price(symbol)
 
             if current_stock_price > max_price:
-                # if current price exceeds max price set new max and drop ones 
-                # cause the shift in percentages between max price and drop prices is saved
+                # update info about stock and write it down to config file
                 max_price = current_stock_price
                 drop_price = max_price * ((100 - drop_percent) / 100)
                 dict_to_update_info['max_price'] = max_price
-                self.update_stocks_info_file("taras_trader/out.yaml")
+                self.update_stocks_file_info("taras_trader/restore.yaml")
 
             if current_stock_price <= drop_price:
-                # if stock dropped calculate price it needs to rise and start tracking when this happen make to buy
+                # update info about stock, write it down to config file and move to 2 part of main alforithm
                 del dict_to_update_info["max_price"]
                 del dict_to_update_info["drop_percent"]
                 dict_to_update_info['drop_price'] = drop_price
-                self.update_stocks_info_file("taras_trader/restore.yaml")
+                self.update_stocks_file_info("taras_trader/restore.yaml")
 
                 asyncio.create_task(
                     self.buy_with_risk_avoidance(
@@ -531,11 +555,10 @@ class Stocks:
     async def check_for_order_to_fill(
         self, trade, order, start_time
     ):
-        """check for order to fill within 15 minutes otherwise cancel it"""
+        """check for order to fill within 5 minutes otherwise cancel it"""
         while trade.log[-1].status != "Filled":
             time_difference = self.find_time_shift(start_time, datetime.datetime.now())
             if time_difference >= 300:
-                # if order hasn't been bought for more that 15 minutes cancel it
                 self.ib.cancelOrder(order)
                 return False
             await asyncio.sleep(1.5)
@@ -551,7 +574,15 @@ class Stocks:
         risk_avoidance_percent, 
         drop_price,
     ):
-        # if stock is processed first time restore previous max price and drop price otherwise calculate rise price
+        """
+        2 part of main stock-handling algorithm
+        1. continuously get current stock price (every 3 seconds - time needed to make one loop itaration)
+        2. if it exceeds rise price it means stock rose, 
+            so we need to place the order to exchange, check if is accepted for 5 minutes:
+            1) in case of failure cancel it and inform user about that in config file
+            2) else update info about stock and got to final part of main stock-handling algorithm
+        important thing is that we write down all the changes to config file
+        """
         await asyncio.sleep(0.5)
         rise_price = drop_price * (1 + (rise_percent / 100))
 
@@ -568,36 +599,34 @@ class Stocks:
 
         dict_to_update_info = list(self.stocks_being_processed[i].values())[0]
         
-        # self.update_stocks_info_file("taras_trader/out.yaml")
         start_time = datetime.datetime.now()
-        # main algorithm
         while True:
             current_stock_price = await self.get_valid_current_price(symbol)
 
-            # if price raised buy it and make an order sell it when it drops to provide risk-avoidance
-            if current_stock_price >= 100: #rise_price:
-                # buy stock as a limit with 102 percentages price to fill the order immediately
-                # order, trade = await place_order(
-                #         symbol, True, quantity, lmt=current_stock_price * 1.02,
-                #     )
-                # is_order_executed = await self.check_for_order_to_fill(
-                #     symbol, quantity, trade, order, datetime.now(),
-                # )
-                if True: #not is_order_executed:
+            if current_stock_price >= rise_price:
+                # buy stock as a limit with price of 102 percent of current price to fill the order immediately
+                # (actually we buy it with 100 percent of current price, 102 percent is just a detour to immediate buy
+                # cause ibkr doesn't buy 100 percent price orders promptly (market orders))
+                order, trade = await place_order(
+                        symbol, True, quantity, lmt=current_stock_price * 1.02,
+                    )
+                is_order_executed = await self.check_for_order_to_fill(
+                    symbol, quantity, trade, order, datetime.datetime.now(),
+                )
+                if not is_order_executed:
                     self.inform_about_unfilled_stock(
                         "taras_trader/config_buy.yaml",
                         self.stocks_being_processed[i],
                         "ATTERNTION!!! order was pending fill for more than 5 minutes, so isn't executed\n"
                     )
                     del self.stocks_being_processed[i]
-                    await asyncio.sleep(1000)
                     return
 
                 del dict_to_update_info["drop_price"]
                 del dict_to_update_info["rise_percent"]
                 max_price = current_stock_price
                 dict_to_update_info['max_price'] = max_price
-                self.update_stocks_info_file("taras_trader/out.yaml")
+                self.update_stocks_file_info("taras_trader/restore.yaml")
 
                 asyncio.create_task(
                     self.provide_risk_avoidance(
@@ -614,6 +643,13 @@ class Stocks:
     async def provide_risk_avoidance(
         self, symbol, quantity, risk_avoidance_percent, max_price=0, 
     ):
+        """
+        final part of main stock-handling algorithm
+        1. continuously get current stock price (every 3 seconds - time needed to make one loop itaration)
+        2. if it exceeds last max price than renew it
+        3. if it dropped 'risk_avoidance_percent' it means we need to immediately sell it
+        important thing is that we write down all the changes to config file
+        """
         await asyncio.sleep(0.5)
         conditions_to_find = {
             'quantity': quantity,
@@ -627,7 +663,6 @@ class Stocks:
 
         dict_to_update_info = list(self.stocks_being_processed[i].values())[0]
         
-        # if stock is processed first time restore previous max price and drop price otherwise calculate alert price
         alert_price = max_price * ((100 - risk_avoidance_percent) / 100)
 
         start_time = datetime.datetime.now()
@@ -635,28 +670,22 @@ class Stocks:
             current_price = self.get_valid_current_price(symbol)
 
             if current_price > max_price:
+                # update info about stock and write it down to config file
                 max_price = current_price
                 dict_to_update_info['max_price'] = max_price
-                self.update_stocks_info_file("taras_trader/out.yaml")
+                self.update_stocks_file_info("taras_trader/out.yaml")
                 alert_price = max_price * ((100 - risk_avoidance_percent) / 100)
 
             if current_price <= alert_price:
-                order, trade = self.loop.run_until_complete(
-                    place_order(
-                        symbol, False, quantity, "LMT", current_price * 0.98
-                        )
-                    )
+                # sell stock as a limit with price of 98 percent of current price to fill the order immediately
+                # (actually we sell it with 100 percent of current price, 98 percent is just a detour to immediate sell
+                # cause ibkr doesn't sell 100 percent price orders promptly (market orders))
+                order, trade = await place_order(
+                    symbol, False, quantity, "LMT", current_price * 0.98
+                )
                 del self.stocks_being_processed[i]
-                self.update_stocks_info_file("taras_trader/out.yaml")
-                # self.write_orders_without_risk_avoidance(
-                #     "risk_avoidance.yaml", symbol, quantity, current_price
-                # )
-                # while True:
-                #     if trade.log[-1].status != "Filled":
-                #         time.sleep(1)
-                #     else:
-                #         break
-                # logger.info(f"stock {symbol} is bough")
+                self.update_stocks_file_info("taras_trader/out.yaml")
+
                 break
             
             await asyncio.sleep(self.find_time_shift(start_time, datetime.datetime.now()))
@@ -669,30 +698,31 @@ async def place_order(
     action: bool,
     quantity,
     order_type,
-    price=0,
     lmt=0,
-    trailpct=0,
-    trailstop=0,
-    lmtPriceOffset=0,
-    aux=0
 ):
-    """action: True if BUY, False if SELL"""
+    """
+    place order to the exhange
+    Parameters
+    ----------
+    symbol: str
+        Stock name
+    action: bool
+        True - buy, False - sell
+    quantity: int | str
+        quantity, can be integer or string of form '$X' where X - price in dollars
+    order_type: str
+        in our case only LMT literal is used as argument
+    lmt:
+        desired price
+    """
     contract = Stock(symbol, "SMART", "USD")
-    # return await app.placeOrderForContract(
-    #     "msft", True, 
-    # )
     trade = await app.app.placeOrderForContract(
         symbol, 
         action, 
         contract, 
         quantity,
-        price,
+        lmt,
         order_type,
-        lmt=lmt,
-        trailpct=0,
-        trailstop=trailstop,
-        lmtPriceOffset=lmtPriceOffset,
-        aux=aux
     )
     return trade
 

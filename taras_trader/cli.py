@@ -428,7 +428,6 @@ class IBKRCmdlineApp:
         isLong: bool,
         contract: Contract,
         qty: float,
-        # price: float,
         lmt: float,
         orderType: str,
         preview=False,
