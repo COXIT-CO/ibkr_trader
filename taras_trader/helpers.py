@@ -1,7 +1,6 @@
 import sys
 import collections
 import oyaml as yaml
-from typing import OrderedDict
 from ib_insync import Stock
 
 
@@ -44,7 +43,7 @@ def extract_data_from_yaml_file(path_to_file):
         except yaml.YAMLError as exc:
             logger.info(exc)
             sys.exit()
-            
+
 
 
 def replace_stocks_being_processed(
@@ -54,49 +53,47 @@ def replace_stocks_being_processed(
     balance_cash=0, 
     are_stocks_accepted: bool = False
 ):
-    patterns_dump_to_file = [collections.OrderedDict([
-        ('fill', 'off'), 
-        ('warning', 
-    "previous stocks are being processed, please, don't put other ones until this title dissapears"),
-        ('order', {
-            'buy': [
-                {"stocks": ""}, 
-                {"conditions": ""}
-            ], 
-            'sell': [
-                {"stocks": ""}, 
-                {"conditions": ""}
-            ]
-            }
-        )
-    ]), collections.OrderedDict([
-        ('fill', 'off'), 
-        ('order', {
-            'buy': [
-                {"stocks": ""}, 
-                {"conditions": ""}
-            ], 
-            'sell': [
-                {"stocks": ""}, 
-                {"conditions": ""}
-            ]
-            }
-        )
-    ]), collections.OrderedDict([
-        ('fill', 'off'), 
-        ('warning', 
-    f"stocks haven't been processes cause their price exceeds balance cash, \nstocks averall price - {stocks_cost}, balance cash -{balance_cash}, \nif you still want to proceed these stocks, please, consider their quantity"),
-    ])]
-
     if are_stocks_accepted:
-        data_to_dump = patterns_dump_to_file[1]
+        data_to_dump = collections.OrderedDict([
+            ('fill', 'off'), 
+            ('order', {
+                'buy': [
+                    {"stocks": ""}, 
+                    {"conditions": ""}
+                ], 
+                'sell': [
+                    {"stocks": ""}, 
+                    {"conditions": ""}
+                ]
+                }
+            )
+        ])
     elif stocks_cost and balance_cash:
         stocks_data_copy = stocks_data.copy()
         del stocks_data_copy['fill']
-        patterns_dump_to_file[2].update(OrderedDict(stocks_data_copy))
-        data_to_dump = patterns_dump_to_file[2]
+        data_to_dump = collections.OrderedDict([
+            ('fill', 'off'), 
+            ('warning', 
+        f"stocks haven't been processes cause their price exceeds balance cash, \nstocks averall price - {stocks_cost}, balance cash -{balance_cash}, \nif you still want to proceed these stocks, please, consider their quantity"),
+        ])
+        data_to_dump.update(collections.OrderedDict(stocks_data_copy))
     else:
-        data_to_dump = patterns_dump_to_file[0]
+        data_to_dump = collections.OrderedDict([
+            ('fill', 'off'), 
+            ('warning', 
+        "previous stocks are being processed, please, don't put other ones until this title dissapears"),
+            ('order', {
+                'buy': [
+                    {"stocks": ""}, 
+                    {"conditions": ""}
+                ], 
+                'sell': [
+                    {"stocks": ""}, 
+                    {"conditions": ""}
+                ]
+                }
+            )
+        ])
 
     with open(file_path, "r") as file:
         lines = file.readlines()
@@ -107,38 +104,6 @@ def replace_stocks_being_processed(
                 file.write(line)
         
         file.write(yaml.dump(data_to_dump))
-
-
-
-def delete_processed_stocks_from_file(data_to_replace: dict, file_path: str) -> dict:
-    if data_to_replace is None or "fill" not in data_to_replace or data_to_replace["fill"] != "on":
-        return None
-    data_to_replace = collections.OrderedDict([
-        ('fill', 'off'), 
-        ('warning', 
-    "previous stocks are being processed, please, don't put other ones untill this title dissapears"),
-        ('order', {
-            'buy': [
-                {"stocks": ""}, 
-                {"conditions": ""}
-            ], 
-            'sell': [
-                {"stocks": ""}, 
-                {"conditions": ""}
-            ]
-            }
-        )
-    ])
-
-    with open(file_path, "r") as file:
-        lines = file.readlines()
-
-    with open(file_path, "w") as file:
-        for line in lines:
-            if line.startswith("\n") or line.strip("\n").startswith("#"):
-                file.write(line)
-        
-        file.write(yaml.dump(data_to_replace))
 
 
 
@@ -153,13 +118,12 @@ def process_scraped_stock_data(data_to_process):
     processed_data = []
 
     for item in data_to_process['order']['buy']:
-        # print(item['stocks'])
         for stock in item['stocks']:
             stock_symbol = list(stock.keys())[0]
             stock_info = {stock_symbol: {}}
             try:
                 stock_info[stock_symbol]["quantity"] = int(list(stock.values())[0])
-            except:
+            except ValueError:
                 stock_info[stock_symbol]["quantity"] = str(list(stock.values())[0])
             stock_info[stock_symbol]["drop_percent"] = float(item['conditions'][1]['trailing-drop-percent'])
             stock_info[stock_symbol]["rise_percent"] = float(item['conditions'][2]['trailing-up-percent'])
