@@ -1,7 +1,6 @@
 import sys
 import collections
 import oyaml as yaml
-from typing import OrderedDict
 from ib_insync import Stock
 
 
