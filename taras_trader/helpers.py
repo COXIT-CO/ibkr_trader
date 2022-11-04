@@ -51,15 +51,14 @@ def extract_data_from_yaml_file(path: str) -> dict:
     from yaml file residing on privided path
         Parameters:
             path (str): path to the file to extact data from"""
-    stream = open(path, 'r')
-    try:
-        scraped_data = yaml.safe_load(stream)
-
-        if "fill" not in scraped_data or scraped_data["fill"] != "on":
-            return None
-    except yaml.YAMLError as exc:
-        print(exc)
-        sys.exit()
+    with open(path, "r") as file:
+        try:
+            scraped_data = yaml.safe_load(file)
+            if "fill" not in scraped_data or scraped_data["fill"] != "on":
+                return None
+        except yaml.YAMLError as exc:
+            logger.info(exc)
+            sys.exit()
 
     return scraped_data
 
