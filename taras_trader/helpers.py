@@ -71,49 +71,47 @@ def replace_stocks_being_processed(
     balance_cash=0, 
     are_stocks_accepted: bool = False
 ):
-    patterns_dump_to_file = [collections.OrderedDict([
-        ('fill', 'off'), 
-        ('warning', 
-    "previous stocks are being processed, please, don't put other ones until this title dissapears"),
-        ('order', {
-            'buy': [
-                {"stocks": ""}, 
-                {"conditions": ""}
-            ], 
-            'sell': [
-                {"stocks": ""}, 
-                {"conditions": ""}
-            ]
-            }
-        )
-    ]), collections.OrderedDict([
-        ('fill', 'off'), 
-        ('order', {
-            'buy': [
-                {"stocks": ""}, 
-                {"conditions": ""}
-            ], 
-            'sell': [
-                {"stocks": ""}, 
-                {"conditions": ""}
-            ]
-            }
-        )
-    ]), collections.OrderedDict([
-        ('fill', 'off'), 
-        ('warning', 
-    f"stocks haven't been processes cause their price exceeds balance cash, \nstocks averall price - {stocks_cost}, balance cash -{balance_cash}, \nif you still want to proceed these stocks, please, consider their quantity"),
-    ])]
-
     if are_stocks_accepted:
-        data_to_dump = patterns_dump_to_file[1]
+        data_to_dump = collections.OrderedDict([
+            ('fill', 'off'), 
+            ('order', {
+                'buy': [
+                    {"stocks": ""}, 
+                    {"conditions": ""}
+                ], 
+                'sell': [
+                    {"stocks": ""}, 
+                    {"conditions": ""}
+                ]
+                }
+            )
+        ])
     elif stocks_cost and balance_cash:
         stocks_data_copy = stocks_data.copy()
         del stocks_data_copy['fill']
-        patterns_dump_to_file[2].update(OrderedDict(stocks_data_copy))
-        data_to_dump = patterns_dump_to_file[2]
+        data_to_dump = collections.OrderedDict([
+            ('fill', 'off'), 
+            ('warning', 
+        f"stocks haven't been processes cause their price exceeds balance cash, \nstocks averall price - {stocks_cost}, balance cash -{balance_cash}, \nif you still want to proceed these stocks, please, consider their quantity"),
+        ])
+        data_to_dump.update(collections.OrderedDict(stocks_data_copy))
     else:
-        data_to_dump = patterns_dump_to_file[0]
+        data_to_dump = collections.OrderedDict([
+            ('fill', 'off'), 
+            ('warning', 
+        "previous stocks are being processed, please, don't put other ones until this title dissapears"),
+            ('order', {
+                'buy': [
+                    {"stocks": ""}, 
+                    {"conditions": ""}
+                ], 
+                'sell': [
+                    {"stocks": ""}, 
+                    {"conditions": ""}
+                ]
+                }
+            )
+        ])
 
     with open(file_path, "r") as file:
         lines = file.readlines()
