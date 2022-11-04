@@ -141,7 +141,7 @@ def process_scraped_stock_data(data_to_process):
             stock_info = {stock_symbol: {}}
             try:
                 stock_info[stock_symbol]["quantity"] = int(list(stock.values())[0])
-            except:
+            except ValueError:
                 stock_info[stock_symbol]["quantity"] = str(list(stock.values())[0])
             stock_info[stock_symbol]["drop_percent"] = float(item['conditions'][1]['trailing-drop-percent'])
             stock_info[stock_symbol]["rise_percent"] = float(item['conditions'][2]['trailing-up-percent'])
