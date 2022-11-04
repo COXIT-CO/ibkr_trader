@@ -125,38 +125,6 @@ def replace_stocks_being_processed(
 
 
 
-def delete_processed_stocks_from_file(data_to_replace: dict, file_path: str) -> dict:
-    if data_to_replace is None or "fill" not in data_to_replace or data_to_replace["fill"] != "on":
-        return None
-    data_to_replace = collections.OrderedDict([
-        ('fill', 'off'), 
-        ('warning', 
-    "previous stocks are being processed, please, don't put other ones untill this title dissapears"),
-        ('order', {
-            'buy': [
-                {"stocks": ""}, 
-                {"conditions": ""}
-            ], 
-            'sell': [
-                {"stocks": ""}, 
-                {"conditions": ""}
-            ]
-            }
-        )
-    ])
-
-    with open(file_path, "r") as file:
-        lines = file.readlines()
-
-    with open(file_path, "w") as file:
-        for line in lines:
-            if line.startswith("\n") or line.strip("\n").startswith("#"):
-                file.write(line)
-        
-        file.write(yaml.dump(data_to_replace))
-
-
-
 def write_orders_to_file(stocks_data: dict, file_path: str) -> None:
     yaml_representation = yaml.dump(stocks_data)
     with open(file_path, "w") as file:
