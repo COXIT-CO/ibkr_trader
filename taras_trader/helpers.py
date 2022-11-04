@@ -7,12 +7,12 @@ from ib_insync import Stock
 
 def contractForName(sym, exchange="SMART", currency="USD"):
     """Convert a single text symbol into an ib_insync contract."""
-    
     return Stock(sym, exchange, currency)
 
 
 
 def tickFieldsForContract(contract) -> str:
+    """return set of tick fields according to which the stock actual data will be received"""
     extraFields = []
     if isinstance(contract, Stock):
         # 104:
@@ -54,6 +54,10 @@ def replace_stocks_being_processed(
     balance_cash=0, 
     are_stocks_accepted: bool = False
 ):
+    """when stocks are accepted to processing delete them from config file and set one of 3 blocks depending on situation:
+        1. If stock are scraped and handled in terms of variables and way of storing them set first block
+        2. When stocks are passed through balance check set second block
+        3. If total stocks cost exceeds balance set last block of block patterns represented below"""
     patterns_dump_to_file = [collections.OrderedDict([
         ('fill', 'off'), 
         ('warning', 
@@ -88,6 +92,7 @@ def replace_stocks_being_processed(
     f"stocks haven't been processes cause their price exceeds balance cash, \nstocks averall price - {stocks_cost}, balance cash -{balance_cash}, \nif you still want to proceed these stocks, please, consider their quantity"),
     ])]
 
+    # depending on conditions set proper block among above ones
     if are_stocks_accepted:
         data_to_dump = patterns_dump_to_file[1]
     elif stocks_cost and balance_cash:
@@ -101,6 +106,7 @@ def replace_stocks_being_processed(
     with open(file_path, "r") as file:
         lines = file.readlines()
 
+    # write back already presented lines and add our ones
     with open(file_path, "w") as file:
         for line in lines:
             if line.startswith("\n") or line.strip("\n").startswith("#"):
@@ -150,6 +156,7 @@ def write_orders_to_file(stocks_data: dict, file_path: str) -> None:
 
 
 def process_scraped_stock_data(data_to_process):
+    """given data of stocks to be processed return it in convenient way"""
     processed_data = []
 
     for item in data_to_process['order']['buy']:
@@ -171,6 +178,7 @@ def process_scraped_stock_data(data_to_process):
 
 
 def process_suspended_stocks(data):
+    """given the stocks data return it in convenient format"""
     processed_data = []
 
     for item in data:
