@@ -170,7 +170,6 @@ def process_scraped_stock_data(data_to_process):
     processed_data = []
 
     for item in data_to_process['order']['buy']:
-        # print(item['stocks'])
         for stock in item['stocks']:
             stock_symbol = list(stock.keys())[0]
             stock_info = {stock_symbol: {}}
