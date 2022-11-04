@@ -6,7 +6,6 @@ import time
 #!/usr/bin/env python3
 
 original_print = print
-from prompt_toolkit import print_formatted_text, Application
 
 # from prompt_toolkit import print_formatted_text as print
 from prompt_toolkit.formatted_text import HTML
@@ -16,12 +15,11 @@ import re
 
 # http://www.grantjenks.com/docs/diskcache/
 import diskcache
-from taras_trader import scrape
 
 from taras_trader import orders
 import sys
 
-from collections import Counter, defaultdict
+from collections import defaultdict
 from dataclasses import dataclass, field
 import datetime
 import os
@@ -49,9 +47,7 @@ import ib_insync
 from ib_insync import (
     IB,
     Contract,
-    Trade,
     Bag,
-    ComboLeg,
     Ticker,
     RealTimeBarList,
     PnLSingle,
@@ -68,10 +64,8 @@ from loguru import logger
 
 import seaborn
 
-# import lang
 from taras_trader import helpers
-from mutil.numeric import fmtPrice, fmtPricePad
-from mutil.timer import Timer
+from mutil.numeric import fmtPricePad
 import tradeapis.buylang as buylang
 
 
