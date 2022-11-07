@@ -725,26 +725,3 @@ async def place_order(
         order_type,
     )
     return trade
-
-
-async def run():
-    await app.ib.connectAsync(
-        "127.0.0.1",
-        4002,
-        clientId=2,
-        readonly=False,
-        account="DU1820017",
-    )
-    _, trade = await place_order("AMZN", True, 1, "LMT", lmt=114)
-    while True:
-        print(trade.log[-1].status)
-        # for item in trade:
-        #     print(item)
-        # print(trade, type(trade))
-        await asyncio.sleep(2)
-
-
-# asyncio.run(run())
-# print(helpers.extract_data_from_yaml_file("config_buy.yaml"))
-
-# populate_stocks_table("../out.yaml")
