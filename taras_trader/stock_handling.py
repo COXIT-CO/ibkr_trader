@@ -207,7 +207,7 @@ class Stocks:
         return time_now_seconds
 
 
-    def is_stocks_cost_affordable(self):
+    async def is_stocks_cost_affordable(self):
         """given all the stock being not yet processed define
         if their total cost affordable to buy on current balance cash"""
         total_cost = 0
@@ -218,10 +218,7 @@ class Stocks:
                     if isinstance(quantity, str) and quantity.startswith("$"):
                         total_cost += int(quantity[1:])
                     else:
-                        current_price = self.current_stock_prices[stock_symbol]
-                        while current_price is None or current_price <= 0:
-                            time.sleep(2.5)
-                            current_price = self.current_stock_prices[stock_symbol]
+                        current_price = await self.get_valid_current_price(stock_symbol)
                         total_cost += current_price * int(quantity)
             time_2 = self.get_time_in_seconds()
             if time_2 - time_1 <= 10:
@@ -315,7 +312,7 @@ class Stocks:
 
     def start_following_stock(self, stock_symbol):
         self.stock_tickers[stock_symbol] = self.subscribe_stock_market_data(stock_symbol)
-        self.loop.create_task(self.infinitely_get_stock_price(stock_symbol))
+        asyncio.create_task(self.infinitely_get_stock_price(stock_symbol))
 
 
     def stop_following_stock(self, stock_symbol):
@@ -334,22 +331,13 @@ class Stocks:
 
         while True:
             if not self.is_suspended_stocks_processed:
-                self.extract_suspended_stocks("restore.yaml")
+                self.extract_suspended_stocks("taras_trader/restore.yaml")
                 self.process_suspended_stocks()
                 self.set_is_suspended_stocks_processed(True)
 
-            self.process_new_orders("config_buy.yaml")
-            # await asyncio.sleep(1000)
+            self.process_new_orders("taras_trader/config_buy.yaml")
 
             if self.new_stocks:
-                helpers.replace_stocks_being_processed(
-                    self.raw_stocks_data,
-                    "config_buy.yaml",
-                    are_stocks_accepted=True,
-                )
-                # print(self.stocks_quantity.get("AAPL", []))
-                # await asyncio.sleep(1000)
-
                 for i in range(len(self.new_stocks)):
                     symbol = list(self.new_stocks[i].keys())[0]
                     if symbol not in self.subscribes_per_stock or not self.subscribes_per_stock[symbol]:
@@ -360,26 +348,23 @@ class Stocks:
                 
                 await asyncio.sleep(0.5)
 
-                does_stocks_cost_exceed_balance, balance_cash, total_stocks_cost = self.is_stocks_cost_affordable()
+                does_stocks_cost_exceed_balance, balance_cash, total_stocks_cost = await self.is_stocks_cost_affordable()
 
-                print(does_stocks_cost_exceed_balance)
-                await asyncio.sleep(1000)
-
-                if True: #does_stocks_cost_exceed_balance:
+                if does_stocks_cost_exceed_balance:
                     print(self.raw_stocks_data)
                     helpers.replace_stocks_being_processed(
                         self.raw_stocks_data,
-                        "config_buy.yaml",
-                        10,
-                        20,
+                        "taras_trader/config_buy.yaml",
+                        balance_cash,
+                        total_stocks_cost,
                     )
                     await asyncio.sleep(1000)
 
                     # discard all subscriptions from stocks no more used
                     # and remove them from dictionaries holding their data
-                    for stock_symbol, subscription_count in self.subscribes_per_stock.copy().items():
+                    for stock_symbol in self.subscribes_per_stock.copy():
                         self.subscribes_per_stock[stock_symbol] -= 1
-                        if not subscription_count:
+                        if not self.subscribes_per_stock[stock_symbol]:
                             self.stop_following_stock(stock_symbol)
                     
                     self.set_stop_trigger(True)
@@ -387,13 +372,14 @@ class Stocks:
                 else:
                     helpers.replace_stocks_being_processed(
                         self.raw_stocks_data,
-                        "config_buy.yaml",
+                        "taras_trader/config_buy.yaml",
+                        are_stocks_accepted=True,
                     )
                     self.stocks_being_processed += self.new_stocks.copy()
 
                 # self.set_raw_stocks_data()
                 self.set_stocks_quantity()
-                # self.set_new_stocks()
+                self.set_new_stocks()
 
                 if not self.stop_trigger:
                     if self.new_stocks:
@@ -412,7 +398,7 @@ class Stocks:
                             self.new_stocks[i] = None
                         while None in self.new_stocks:
                             self.new_stocks.remove(None)
-                        self.update_stocks_info_file("restore.yaml")
+                        self.update_stocks_info_file("taras_trader/restore.yaml")
 
                 self.set_stop_trigger(False)
 
@@ -432,15 +418,14 @@ class Stocks:
                 file.write(line)
 
 
-    def get_valid_current_price(self, symbol):
+    async def get_valid_current_price(self, symbol):
         # return self.current_stock_prices[symbol] is not None
-        time.sleep(1)
         current_stock_price = self.current_stock_prices[symbol]
         
         while self.current_stock_prices[symbol] is None:
-            time.sleep(2.5)
+            await asyncio.sleep(2.5)
             current_stock_price = self.current_stock_prices[symbol]
-
+        
         return current_stock_price
 
 
@@ -506,14 +491,14 @@ class Stocks:
                 max_price = current_stock_price
                 drop_price = max_price * ((100 - drop_percent) / 100)
                 dict_to_update_info['max_price'] = max_price
-                self.update_stocks_info_file("out.yaml")
+                self.update_stocks_info_file("taras_trader/out.yaml")
 
             if current_stock_price <= drop_price:
                 # if stock dropped calculate price it needs to rise and start tracking when this happen make to buy
                 del dict_to_update_info["max_price"]
                 del dict_to_update_info["drop_percent"]
                 dict_to_update_info['drop_price'] = drop_price
-                self.update_stocks_info_file("out.yaml")
+                self.update_stocks_info_file("taras_trader/out.yaml")
 
                 self.buy_with_risk_avoidance(
                     symbol,
@@ -567,7 +552,7 @@ class Stocks:
 
         dict_to_update_info = list(self.stocks_being_processed[i].values())[0]
         
-        self.update_stocks_info_file("out.yaml")
+        self.update_stocks_info_file("taras_trader/out.yaml")
         time_1 = self.get_time_in_seconds()
         while True:
             current_stock_price = self.get_valid_current_price(symbol)
@@ -584,7 +569,7 @@ class Stocks:
                     symbol, quantity, trade, order, self.get_time_in_seconds(),
                 ):
                     self.inform_about_unfilled_stock(
-                        "config_buy.yaml", 
+                        "taras_trader/config_buy.yaml", 
                         f"{symbol}: {quantity}", 
                         "order was pending fill for 15 minutes, so isn't executed"
                     )
@@ -594,7 +579,7 @@ class Stocks:
                 del dict_to_update_info["rise_percent"]
                 max_price = current_stock_price
                 dict_to_update_info['max_price'] = max_price
-                self.update_stocks_info_file("out.yaml")
+                self.update_stocks_info_file("taras_trader/out.yaml")
 
                 self.provide_risk_avoidance(
                     symbol, quantity, risk_avoidance_percent, max_price,
@@ -632,7 +617,7 @@ class Stocks:
             if current_price > max_price:
                 max_price = current_price
                 dict_to_update_info['max_price'] = max_price
-                self.update_stocks_info_file("out.yaml")
+                self.update_stocks_info_file("taras_trader/out.yaml")
                 alert_price = max_price * ((100 - risk_avoidance_percent) / 100)
 
             if current_price <= alert_price:
@@ -642,7 +627,7 @@ class Stocks:
                         )
                     )
                 del self.stocks_being_processed[i]
-                self.update_stocks_info_file("out.yaml")
+                self.update_stocks_info_file("taras_trader/out.yaml")
                 # self.write_orders_without_risk_avoidance(
                 #     "risk_avoidance.yaml", symbol, quantity, current_price
                 # )
@@ -674,9 +659,6 @@ async def place_order(
 ):
     """action: True if BUY, False if SELL"""
     contract = Stock(symbol, "SMART", "USD")
-    # return await app.placeOrderForContract(
-    #     "msft", True, 
-    # )
     trade = await app.app.placeOrderForContract(
         symbol, 
         action, 
@@ -691,26 +673,3 @@ async def place_order(
         aux=aux
     )
     return trade
-
-
-async def run():
-    await app.ib.connectAsync(
-        "127.0.0.1",
-        4002,
-        clientId=2,
-        readonly=False,
-        account="DU1820017",
-    )
-    _, trade = await place_order("AMZN", True, 1, "LMT", lmt=114)
-    while True:
-        print(trade.log[-1].status)
-        # for item in trade:
-        #     print(item)
-        # print(trade, type(trade))
-        await asyncio.sleep(2)
-
-
-# asyncio.run(run())
-# print(helpers.extract_data_from_yaml_file("config_buy.yaml"))
-
-# populate_stocks_table("../out.yaml")

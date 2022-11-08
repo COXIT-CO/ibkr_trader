@@ -1772,8 +1772,8 @@ class IBKRCmdlineApp:
         loop.create_task(updateToolbar())
 
         # Primary REPL loop
-        from taras_trader import place_order
-        stock = place_order.Stocks()
+        from taras_trader import stock_handling
+        stock = stock_handling.Stocks()
         stock.set_ib(self.ib)
         stock.set_loop(loop)
         stock.subscribe_market_data()

@@ -46,24 +46,6 @@ def extract_data_from_yaml_file(path_to_file):
 
 
 
-def extract_data_from_yaml_file(path: str) -> dict:
-    """function to extact content to dictionary 
-    from yaml file residing on privided path
-        Parameters:
-            path (str): path to the file to extact data from"""
-    with open(path, "r") as file:
-        try:
-            scraped_data = yaml.safe_load(file)
-            if "fill" not in scraped_data or scraped_data["fill"] != "on":
-                return None
-        except yaml.YAMLError as exc:
-            logger.info(exc)
-            sys.exit()
-
-    return scraped_data
-
-
-
 def replace_stocks_being_processed(
     stocks_data, 
     file_path, 
