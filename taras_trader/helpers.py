@@ -43,7 +43,11 @@ def extract_data_from_yaml_file(path_to_file):
         except yaml.YAMLError as exc:
             logger.info(exc)
             sys.exit()
+<<<<<<< HEAD
             
+=======
+
+>>>>>>> issue_3
 
 
 def replace_stocks_being_processed(
