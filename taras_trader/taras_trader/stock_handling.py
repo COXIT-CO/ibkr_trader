@@ -356,12 +356,12 @@ class Stocks:
         )
 
         while True:
-            if True: #not self.is_suspended_stocks_processed:
+            if not self.is_suspended_stocks_processed:
                 self.extract_suspended_stocks("taras_trader/restore.yaml")
                 self.process_suspended_stocks()
                 self.set_is_suspended_stocks_processed(True)
 
-            # self.process_new_orders("taras_trader/config_buy.yaml")
+            self.process_new_orders("taras_trader/config_buy.yaml")
 
             if self.new_stocks:
                 for i in range(len(self.new_stocks)):
@@ -404,14 +404,9 @@ class Stocks:
                     for i in range(len(self.new_stocks)):
                         symbol = list(self.new_stocks[i].keys())[0]
                         stock_conditions = list(self.new_stocks[i].values())[0]
-                        args = self.set_proper_conditions_order(symbol, stock_conditions)
+                        ordered_args = self.set_proper_conditions_order(symbol, stock_conditions)
 
-                        # threading.Thread(
-                        #     target=self.process_stock, 
-                        #     name="stock_handler", 
-                        #     args=args
-                        # ).start()
-
+                        asyncio.create_task(self.process_stock(*ordered_args))
                         self.stocks_being_processed.append(self.new_stocks[i].copy())
 
                     self.update_stocks_file_info("taras_trader/restore.yaml")
@@ -419,7 +414,8 @@ class Stocks:
 
                 self.set_new_stocks()
 
-            await asyncio.sleep(100000)
+            await asyncio.sleep(10)
+
 
 
     @staticmethod
