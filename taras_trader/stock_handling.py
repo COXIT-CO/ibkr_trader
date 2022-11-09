@@ -356,12 +356,12 @@ class Stocks:
         )
 
         while True:
-            if True: #not self.is_suspended_stocks_processed:
+            if not self.is_suspended_stocks_processed:
                 self.extract_suspended_stocks("taras_trader/restore.yaml")
                 self.process_suspended_stocks()
                 self.set_is_suspended_stocks_processed(True)
 
-            # self.process_new_orders("taras_trader/config_buy.yaml")
+            self.process_new_orders("taras_trader/config_buy.yaml")
 
             if self.new_stocks:
                 for i in range(len(self.new_stocks)):
