@@ -1,6 +1,3 @@
-import sys
-sys.path.append("site-packages")
-
 from prompt_toolkit.patch_stdout import patch_stdout
 from loguru import logger
 from mutil import safeLoop  # type: ignore

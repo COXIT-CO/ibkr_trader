@@ -6,12 +6,12 @@ from ib_insync import Stock
 
 def contractForName(sym, exchange="SMART", currency="USD"):
     """Convert a single text symbol into an ib_insync contract."""
-    
     return Stock(sym, exchange, currency)
 
 
 
 def tickFieldsForContract(contract) -> str:
+    """return set of tick fields according to which the stock actual data will be received"""
     extraFields = []
     if isinstance(contract, Stock):
         # 104:
@@ -98,6 +98,7 @@ def replace_stocks_being_processed(
     with open(file_path, "r") as file:
         lines = file.readlines()
 
+    # write back already presented lines and add our ones
     with open(file_path, "w") as file:
         for line in lines:
             if line.startswith("\n") or line.strip("\n").startswith("#"):
@@ -115,6 +116,7 @@ def write_orders_to_file(stocks_data: dict, file_path: str) -> None:
 
 
 def process_scraped_stock_data(data_to_process):
+    """given data of stocks to be processed return it in convenient way"""
     processed_data = []
 
     for item in data_to_process['order']['buy']:
@@ -135,6 +137,7 @@ def process_scraped_stock_data(data_to_process):
 
 
 def process_suspended_stocks(data):
+    """given the stocks data return it in convenient format"""
     processed_data = []
 
     for item in data:

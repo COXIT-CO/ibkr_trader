@@ -47,11 +47,24 @@
 
 
 # ATTENTION: Stocks haven't been processes cause their price exceeds balance cash, stocks averall price - , balance cash -
-fill: 'off'
+fill: 'on'
 order:
   buy:
-  - stocks: ''
-  - conditions: ''
+  - stocks:
+    - TSLA: 2
+    - PSTG: $100
+    conditions:
+    - type: trailing-limit
+    - trailing-drop-percent: 10
+    - trailing-up-percent: 2
+  - stocks:
+    - MSFT: 2
+    - AAPL: 6
+    conditions:
+    - type: trailing-limit
+    - trailing-drop-percent: 10
+    - trailing-up-percent: 2
   sell:
-  - stocks: ''
-  - conditions: ''
+  - type: trailing-limit
+  - trailing-drop-percent: 20
+  - margin-loss: 1
