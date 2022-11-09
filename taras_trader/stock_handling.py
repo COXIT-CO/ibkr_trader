@@ -53,23 +53,23 @@ class Stocks:
     new_stocks = []
     raw_stocks_data = {}
     current_stock_prices = {}
+    stocks_quantity = {}
+    stock_tickers = {}
+    subscribes_per_stock = {}
+    suspended_stocks = {}
+    summary = {}
     stop_trigger = False
     stop_write_flag = False
     is_suspended_stocks_processed = True
     ib: IB = field(default_factory=IB)
     loop = None
-    summary: dict[str, float] = field(default_factory=dict)
     accountStatus: dict[str, float] = field(
         default_factory=lambda: dict(
             zip(LIVE_ACCOUNT_STATUS, [0.00] * len(LIVE_ACCOUNT_STATUS))
         )
     )
     # raw_stocks_data: dict = field(default_factory=dict)
-    stock_tickers: dict[str, Ticker] = field(default_factory=dict)
-    subscribes_per_stock: dict[str, int] = field(default_factory=dict)
     # current_stock_prices: dict[str, int] = field(default_factory=dict)
-    stocks_quantity: dict[str, List[Union[int, str]]] = field(default_factory=dict)
-    suspended_stocks: dict = field(default_factory=dict)
 
 
     @classmethod
@@ -317,7 +317,6 @@ class Stocks:
 
     def stop_following_stock(self, stock_symbol):
         self.ib.cancelMktData(Stock(stock_symbol, "SMART", "USD"))
-        del self.subscribes_per_stock[stock_symbol]
         del self.stock_tickers[stock_symbol]
         del self.current_stock_prices[stock_symbol]
 
@@ -349,16 +348,15 @@ class Stocks:
                 await asyncio.sleep(0.5)
 
                 does_stocks_cost_exceed_balance, balance_cash, total_stocks_cost = await self.is_stocks_cost_affordable()
+                self.set_stocks_quantity()
 
                 if does_stocks_cost_exceed_balance:
-                    print(self.raw_stocks_data)
                     helpers.replace_stocks_being_processed(
                         self.raw_stocks_data,
                         "taras_trader/config_buy.yaml",
-                        balance_cash,
                         total_stocks_cost,
+                        balance_cash,
                     )
-                    await asyncio.sleep(1000)
 
                     # discard all subscriptions from stocks no more used
                     # and remove them from dictionaries holding their data
@@ -368,39 +366,31 @@ class Stocks:
                             self.stop_following_stock(stock_symbol)
                     
                     self.set_stop_trigger(True)
-                    # make all collections holding data about stocks not able to execute clear
                 else:
                     helpers.replace_stocks_being_processed(
                         self.raw_stocks_data,
                         "taras_trader/config_buy.yaml",
                         are_stocks_accepted=True,
                     )
-                    self.stocks_being_processed += self.new_stocks.copy()
-
-                # self.set_raw_stocks_data()
-                self.set_stocks_quantity()
-                self.set_new_stocks()
-
+                
                 if not self.stop_trigger:
-                    if self.new_stocks:
-                        for i in range(len(self.new_stocks)):
-                            symbol = list(self.new_stocks[i].keys())[0]
-                            stock_conditions = list(self.new_stocks[i].values())[0]
-                            args = self.set_proper_conditions_order(symbol, stock_conditions)
+                    for i in range(len(self.new_stocks)):
+                        symbol = list(self.new_stocks[i].keys())[0]
+                        stock_conditions = list(self.new_stocks[i].values())[0]
+                        args = self.set_proper_conditions_order(symbol, stock_conditions)
 
-                            threading.Thread(
-                                target=self.process_stock, 
-                                name="stock_handler", 
-                                args=args
-                            ).start()
+                        threading.Thread(
+                            target=self.process_stock, 
+                            name="stock_handler", 
+                            args=args
+                        ).start()
 
-                            self.stocks_being_processed.append(self.new_stocks[i].copy()) 
-                            self.new_stocks[i] = None
-                        while None in self.new_stocks:
-                            self.new_stocks.remove(None)
-                        self.update_stocks_info_file("taras_trader/restore.yaml")
+                        self.stocks_being_processed.append(self.new_stocks[i].copy())
 
-                self.set_stop_trigger(False)
+                    self.update_stocks_info_file("taras_trader/restore.yaml")
+                    self.set_stop_trigger(False)
+
+                self.set_new_stocks()
 
             await asyncio.sleep(10)
 
