@@ -1,0 +1,24 @@
+networks:
+  loki:
+
+services:
+  icli:
+    build: ./icli
+    container_name: icli_c
+    networks:
+      - loki
+
+  gateway:
+    build: ./gateway
+    container_name: gateway_c
+    ports:
+      - 4002:4002
+    volumes:
+      - /tmp/.X11-unix/:/tmp/.X11-unix/
+    environment:
+      - DISPLAY=$DISPLAY
+    networks:
+      - loki
+
+
+
