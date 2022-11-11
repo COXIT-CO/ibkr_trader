@@ -20,3 +20,5 @@ RUN git clone https://github.com/pygame/pygame.git || \
     python setup.py build || \
     sudo python setup.py install
 RUN pip install -r requirements.txt
+ENTRYPOINT ["tail", "-f", "/dev/null"]
+# RUN python -m icli
