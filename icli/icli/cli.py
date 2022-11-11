@@ -257,8 +257,8 @@ class IBKRCmdlineApp:
     # (more frequent updates is higher redraw CPU utilization)
     toolbarUpdateInterval: float = 2.22
 
-    host: str = "127.0.0.1"
-    port: int = 4001
+    host: str = "172.19.0.2"
+    port: int = 4002
 
     # initialized to True/False when we first see the account
     # ID returned from the API which will tell us if this is a
@@ -972,14 +972,6 @@ class IBKRCmdlineApp:
         # TODO: figure out the bug ehre, sometimes if they play back-to-back too fast, the
         #       entire program locks up in a 100% CPU loop until manually kill -9'd?
 
-        if self.alert:
-            pygame.mixer.music.stop()
-
-            if fill.execution.side == "BOT":
-                pygame.mixer.music.play()
-            elif fill.execution.side == "SLD":
-                pygame.mixer.music.play()
-
         logger.warning(
             "[{} :: {} :: {}] Order {} commission: {} {} {} at ${:,.2f} (total {} of {}) (commission {} ({} each)){}",
             trade.orderStatus.orderId,
@@ -1656,10 +1648,6 @@ class IBKRCmdlineApp:
         loop = asyncio.get_event_loop()
 
         self.dispatch = lang.Dispatch()
-        pygame.mixer.init()
-
-        # TODO: could probably just be: pathlib.Path(__file__).parent
-        pygame.mixer.music.load(pathlib.Path(__file__).parent / "CANYON.MID")
 
         contracts = [Stock(sym, "SMART", "USD") for sym in stocks]
         contracts += futures
@@ -1751,6 +1739,10 @@ class IBKRCmdlineApp:
                     # If you are using the IBKR API, it's best to *never* create
                     # orders outside of the API (TWS, web interface, mobile) because
                     # the API treats non-API-created orders differently.
+
+                    print(self.host)
+                    print(self.port)
+                    print(self.accountId)
 
                     await self.ib.connectAsync(
                         self.host,
