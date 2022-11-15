@@ -1,4 +1,4 @@
-FROM  ubuntu:latest
+FROM --platform=linux/amd64 ubuntu:latest
 RUN apt-get update \
  && apt-get install wget unzip zip -y
 RUN apt-get install -y libxtst6 openjdk-11-jre uuid-runtime dbus wget
