@@ -1,65 +1,20 @@
-# order:
-#   buy:
-#       stock:
-#         - TSLA
-#         - PSTG
-#       conditions:
-#         - type: trailing-limit
-#         - funds: 10000
-#         - price-cents: 2000  # request current price
-#         - trailing-drop-percent: 10
-#   sell:
-#     - type: trailing-limit
-#     - trailing-drop-percent: 20
-#     - margin-loss: 1
-
-
-# milestone 2 (buy stock if it drops x percentages)
-
-# pattern
-
-# fill: "on"
-# order:
-#   buy:
-#     - stocks:
-#         - TSLA: 2
-#         - PSTG: 4
-#       conditions:
-#         - type: trailing-limit
-#         # - funds: 10000
-#           #- price-cents: 2000  # request current price
-#         - trailing-drop-percent: 10
-#         - trailing-up-percent: 2
-#     - stocks:
-#         - MSFT: 2
-#         - AAPL: 6
-#       conditions:
-#         - type: trailing-limit
-#         # - funds: 10000
-#           #- price-cents: 2000  # request current price
-#         - trailing-drop-percent: 10
-#         - trailing-up-percent: 2
-#   sell:
-#     - type: trailing-limit
-#     - trailing-drop-percent: 20
-#     - margin-loss: 1
-
-
-
-# ATTENTION: Stocks haven't been processes cause their price exceeds balance cash, stocks averall price - , balance cash -
-fill: 'off'
-warning: "stocks haven't been processes cause their price exceeds balance cash, \n\
-  stocks averall price - 1000000000, balance cash -982325.96, \nif you still want\
-  \ to proceed these stocks, please, consider their quantity"
+fill: "off"
 order:
   buy:
-  - stocks:
-    - PSTG: $1000000000
-    conditions:
-    - type: trailing-limit
-    - trailing-drop-percent: 10
-    - trailing-up-percent: 2
+    - stocks:
+        - TSLA: 2
+        - PSTG: 4
+      conditions:
+        - type: trailing-limit
+        - trailing-drop-percent: 10
+        - trailing-up-percent: 2
+    - stocks:
+        - MSFT: 2
+        - AAPL: 6
+      conditions:
+        - type: trailing-limit
+        - trailing-drop-percent: 10
+        - trailing-up-percent: 2
   sell:
-  - type: trailing-limit
-  - trailing-drop-percent: 20
-  - margin-loss: 1
+    - type: trailing-limit
+    - trailing-drop-percent: 20
