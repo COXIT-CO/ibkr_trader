@@ -1,6 +1,4 @@
 from cmath import nan
-import sys
-sys.path.append("site-packages")
 import time
 
 #!/usr/bin/env python3
@@ -16,7 +14,7 @@ import re
 # http://www.grantjenks.com/docs/diskcache/
 import diskcache
 
-from taras_trader import orders
+from . import orders
 import sys
 
 from collections import defaultdict
@@ -64,7 +62,7 @@ from loguru import logger
 
 import seaborn
 
-from taras_trader import helpers
+from . import helpers
 from mutil.numeric import fmtPricePad
 import tradeapis.buylang as buylang
 
@@ -332,90 +330,6 @@ class IBKRCmdlineApp:
 
         return results
 
-    # async def contractForOrderRequest(
-    #     self, oreq: buylang.OrderRequest, exchange="SMART"
-    # ) -> Optional[Contract]:
-    #     """Return a valid qualified contract for any order request.
-
-    #     If order request has multiple legs, returns a Bag contract representing the spread.
-    #     If order request only has one symbol, returns a regular future/stock/option contract.
-
-    #     If symbol(s) in order request are not valid, returns None."""
-
-    #     if oreq.isSpread():
-    #         return await self.bagForSpread(oreq, exchange)
-
-    #     if oreq.isSingle():
-    #         contract = contractForName(oreq.orders[0].symbol, exchange=exchange)
-    #         await self.qualify(contract)
-
-    #         # only return success if the contract validated
-    #         if contract.conId:
-    #             return contract
-
-    #         return None
-
-    #     # else, order request had no orders...
-    #     return None
-
-    # async def bagForSpread(
-    #     self, oreq: buylang.OrderRequest, exchange="SMART", currency="USD"
-    # ) -> Optional[Bag]:
-    #     """Given a multi-leg OrderRequest, return a qualified Bag contract.
-
-    #     If legs do not validate, returns None and prints errors along the way."""
-
-    #     # For IBKR spreads ("Bag" contracts), each leg of the spread is qualified
-    #     # then placed in the final contract instead of the normal approach of qualifying
-    #     # the final contract itself (because Bag contracts have Legs and each Leg is only
-    #     # a contractId we have to look up via qualify() individually).
-    #     contracts = [
-    #         contractForName(s.symbol, exchange=exchange, currency=currency)
-    #         for s in oreq.orders
-    #     ]
-    #     await self.qualify(*contracts)
-
-    #     if not all(c.conId for c in contracts):
-    #         logger.error("Not all contracts qualified!")
-    #         return None
-
-    #     contractUnderlying = contracts[0].symbol
-    #     reqUnderlying = oreq.orders[0].underlying()
-    #     if contractUnderlying != reqUnderlying.lstrip("/"):
-    #         logger.error(
-    #             "Resolved symbol [{}] doesn't match order underlying [{}]?",
-    #             contractUnderlying,
-    #             reqUnderlying,
-    #         )
-    #         return None
-
-    #     if not all(c.symbol == contractUnderlying for c in contracts):
-    #         logger.error("All contracts must have same underlying for spread!")
-    #         return None
-
-    #     # Iterate (in MATCHED PAIRS) the resolved contracts with their original order details
-    #     legs = []
-
-    #     # We use more explicit exchange mapping here since future options
-    #     # require naming their exchanges instead of using SMART everywhere.
-    #     useExchange: str
-    #     for c, o in zip(contracts, oreq.orders):
-    #         useExchange = c.exchange
-    #         leg = ComboLeg(
-    #             conId=c.conId,
-    #             ratio=o.multiplier,
-    #             action="BUY" if o.isBuy() else "SELL",
-    #             exchange=c.exchange,
-    #         )
-
-    #         legs.append(leg)
-
-    #     return Bag(
-    #         symbol=contractUnderlying,
-    #         exchange=useExchange or exchange,
-    #         comboLegs=legs,
-    #         currency=currency,
-    #     )
 
     def symbolNormalizeIndexWeeklyOptions(self, name: str) -> str:
         """Weekly index options have symbol names with 'W' but orders are placed without."""
@@ -441,40 +355,6 @@ class IBKRCmdlineApp:
         # turn option contract lookup into non-spaced version
         sym = sym.replace(" ", "")
 
-        # logger.info("[{}] Request to order qty {} price {}", sym, qty, price)
-
-        # need to replace underlying if is "fake settled underlying"
-        # quotesym = self.symbolNormalizeIndexWeeklyOptions(sym)
-        # await self.dispatch.runop("add", f'"{quotesym}"', self.opstate)
-
-        # if not contract.conId:
-        #     # spead contracts don't have IDs, so only reject if NOT a spread here.
-        #     if contract.tradingClass != "COMB":
-        #         logger.error(
-        #             "[{} :: {}] Not submitting order because contract not qualified!",
-        #             sym,
-        #             quotesym,
-        #         )
-        #         return None
-
-        # if isinstance(contract, (Option, Bag)) or contract.tradingClass == "COMB":
-        #     # Purpose: don't trigger warning about "RTH option has no effect" with options...
-        #     # TODO: check if RTH includes extended late 4:15 ending options SPY / SPX / QQQ / IWM / etc?
-        #     if contract.localSymbol[0:3] in {"SPX", "VIX"}:
-        #         # SPX and VIX options now trade 23/5 but anything not 0930-1600 (maybe even to 1615?) is
-        #         # considered "outside RTH"
-        #         outsideRth = True
-        #     else:
-        #         outsideRth = False
-        # else:
-        #     # Algos can only operate RTH:
-        #     if " " in orderType or (
-        #         orderType
-        #         in {"MIDPRICE", "MKT + ADAPTIVE + FAST", "LMT + ADAPTIVE + FAST"}
-        #     ):
-        #         outsideRth = False
-        #     else:
-                # REL and LMT/MKT/MOO/MOC orders can be outside RTH
         outsideRth = True
 
         # TODO: cleanup, also verify how we want to run FAST or EVICT outside RTH?
@@ -605,8 +485,6 @@ class IBKRCmdlineApp:
 
         logger.info("[{}] Ordering {} via {}", contract.localSymbol, contract, order)
         trade = self.ib.placeOrder(contract, order)
-        print("trade")
-        print(trade)
 
         # TODO: add optional agent-like feature HERE to modify order in steps for buys (+price, -qty)
         #       or for sells (-price).
@@ -622,41 +500,7 @@ class IBKRCmdlineApp:
 
         return order, trade
 
-    # def amountForTrade(
-    #     self, trade: Trade
-    # ) -> tuple[float, float, float, Union[float, int]]:
-    #     """Return dollar amount of trade given current limit price and quantity.
 
-    #     Also compensates for contract multipliers correctly.
-
-    #     Returns:
-    #         - calculated remaining amount
-    #         - calculated total amount
-    #         - current limit price
-    #         - current quantity remaining
-    #     """
-
-    #     currentPrice = trade.order.lmtPrice
-    #     currentQty = trade.orderStatus.remaining
-    #     totalQty = currentQty + trade.orderStatus.filled
-    #     avgFillPrice = trade.orderStatus.avgFillPrice
-
-    #     # If contract has multiplier (like 100 underlying per option),
-    #     # calculate total spend with mul * p * q.
-    #     # The default "no multiplier" value is '', so this check should be fine.
-    #     if isinstance(trade.contract, Future):
-    #         # FUTURES HACK BECAUSE WE DO EXTERNAL MARGIN CALCULATIONS REGARDLESS OF MULTIPLIER
-    #         mul = 1
-    #     else:
-    #         mul = int(trade.contract.multiplier) if trade.contract.multiplier else 1
-
-    #     # use average price IF fills have happened, else use current limit price
-    #     return (
-    #         currentQty * currentPrice * mul,
-    #         totalQty * (avgFillPrice or currentPrice) * mul,
-    #         currentPrice,
-    #         currentQty,
-    #     )
 
     def quantityForAmount(
         self, contract: Contract, amount: float, limitPrice: float
@@ -905,14 +749,6 @@ class IBKRCmdlineApp:
         # TODO: figure out the bug ehre, sometimes if they play back-to-back too fast, the
         #       entire program locks up in a 100% CPU loop until manually kill -9'd?
 
-        # if self.alert:
-        #     pygame.mixer.music.stop()
-
-        #     if fill.execution.side == "BOT":
-        #         pygame.mixer.music.play()
-        #     elif fill.execution.side == "SLD":
-        #         pygame.mixer.music.play()
-
         logger.warning(
             "[{} :: {} :: {}] Order {} commission: {} {} {} at ${:,.2f} (total {} of {}) (commission {} ({} each)){}",
             trade.orderStatus.orderId,
@@ -1093,18 +929,8 @@ class IBKRCmdlineApp:
             if c.bid > 0 and c.bid == c.bid and c.ask > 0 and c.ask == c.ask:
                 # TODO: add proper rounding for futures tick sizes
                 usePrice = round((c.bid + c.ask) / 2, 2)
-                # s = f"{1}, {dict(bid=c.bid, ask=c.ask, last=c.last, close=c.close, high=c.high, low=c.low, markPrice=c.markPrice)}"
-                # time.sleep(1.5)
-                # logger.info(s)
-                # logger.info(c.marketPrice())
-                # logger.info(c.midpoint())
-                # logger.info(usePrice)
             else:
                 usePrice = c.last if c.last == c.last else c.close
-                # s = f"{2}, {dict(bid=c.bid, ask=c.ask, last=c.last, close=c.close)}"
-                # time.sleep(1.5)
-                # logger.info(s)
-                # logger.info(c.close)
 
             if (c.high == c.high and c.low == c.low) or (c.bid > 0 and c.ask > 0):
                 # only update EMA if this has price-like details and isn't TRIN/TICK/AD
@@ -1262,23 +1088,6 @@ class IBKRCmdlineApp:
                     ],
                 )
 
-                if False:
-                    pctUpLow, amtUpLow = mkPctColor(
-                        percentUpFromLow,
-                        [
-                            f"{percentUpFromLow:>7.2f}%",
-                            f"{amtLow:>7.2f}" if amtLow < 1000 else f"{amtLow:>7.0f}",
-                        ],
-                    )
-                    pctUpClose, amtUpClose = mkPctColor(
-                        percentUpFromClose,
-                        [
-                            f"{percentUpFromClose:>7.2f}%",
-                            f"{amtClose:>7.2f}"
-                            if amtLow < 1000
-                            else f"{amtClose:>7.0f}",
-                        ],
-                    )
 
                 if c.lastGreeks and c.lastGreeks.undPrice:
                     und = c.lastGreeks.undPrice
@@ -1771,42 +1580,15 @@ class IBKRCmdlineApp:
         loop.create_task(updateToolbar())
 
         # Primary REPL loop
-        from taras_trader import stock_handling
+        from . import stock_handling
         stock = stock_handling.Stocks()
         stock.set_ib(self.ib)
         stock.set_loop(loop)
         stock.subscribe_market_data()
         while True:
             try:
-                # extracted_data = helpers.extract_data_from_yaml_file("out.yaml")
-                # print(extracted_data)
-                # await asyncio.sleep(1)
                 await stock.run()
                 break
-
-                # place_order.Stocks.run(self.ib)
-                # for _, c in self.quoteState.items():
-                #     print(c)
-                #     logger.info((type(c.midpoint()), math.isnan(c.midpoint()), c.midpoint()))
-                #     time.sleep(1)
-                # extracted_data = 
-
-                # # logger.info("\n")
-                # await asyncio.sleep(2)
-
-                # await asyncio.sleep(3)
-                # logger.info(text1)
-
-                # Attempt to run the command(s) submitted into the prompt
-                # (allow pasting multiple newline commands)
-                # for ccmd in text1.strip().split("\n"):
-                #     cmd, *rest = ccmd.split(" ", 1)
-                #     with Timer(cmd):
-                #         result = await self.dispatch.runop(
-                #             cmd, rest[0] if rest else None, self.opstate
-                #         )
-
-                continue
             except KeyboardInterrupt:
                 continue  # Control-C pressed. Try again.
             except EOFError:
