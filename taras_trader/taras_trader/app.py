@@ -1,8 +1,6 @@
 from dotenv import dotenv_values
 import os
-
-from taras_trader import cli
-
+from . import cli
 from loguru import logger
 
 def asink(x):
@@ -37,10 +35,3 @@ PORT = int(CONFIG["ICLI_IBKR_PORT"])  # type: ignore
 app = cli.IBKRCmdlineApp(
     accountId=ACCOUNT_ID, host=HOST, port=PORT
 )  
-
-# async def a():
-#     await app.setup()
-#     await app.dorepl()
-#     app.stop()
-
-# asyncio.run(a())
