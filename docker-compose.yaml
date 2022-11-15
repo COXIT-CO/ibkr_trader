@@ -1,24 +1,49 @@
 networks:
   loki:
+    driver: bridge
+    ipam:
+     config:
+       - subnet: 10.5.0.0/16
+         gateway: 10.5.0.1
 
 services:
-  icli:
-    build: ./icli
-    container_name: icli_c
-    networks:
-      - loki
-
   gateway:
     build: ./gateway
     container_name: gateway_c
     ports:
-      - 4002:4002
+      - 5900:5900
     volumes:
       - /tmp/.X11-unix/:/tmp/.X11-unix/
     environment:
       - DISPLAY=$DISPLAY
     networks:
-      - loki
+      loki:
+        ipv4_address: 10.5.0.5
 
 
+  icli:
+    build: ./icli
+    container_name: icli_c
+    networks:
+      loki:
+        ipv4_address: 10.5.0.6
 
+
+  taras_trader:
+    build: ./taras_trader
+    container_name: taras_trader_c
+    volumes:
+      - ./config/config_buy.yaml:/app/taras_trader/config_buy.yaml
+    networks:
+      loki:
+        ipv4_address: 10.5.0.7
+
+
+  config:
+    build: ./config
+    container_name: config_c
+    volumes:
+      - ./config/config_buy.yaml:/config_buy.yaml
+    networks:
+      loki:
+        ipv4_address: 10.5.0.8
