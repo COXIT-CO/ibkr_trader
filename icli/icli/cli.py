@@ -43,9 +43,6 @@ import os
 # Tell pygame to not print a hello message when it is imported
 os.environ["PYGAME_HIDE_SUPPORT_PROMPT"] = "hide"
 
-# sounds!
-import pygame
-
 import ib_insync
 from ib_insync import (
     IB,
@@ -257,8 +254,8 @@ class IBKRCmdlineApp:
     # (more frequent updates is higher redraw CPU utilization)
     toolbarUpdateInterval: float = 2.22
 
-    host: str = "172.19.0.2"
-    port: int = 4002
+    host: str = "127.0.0.1"
+    port: int = 4001
 
     # initialized to True/False when we first see the account
     # ID returned from the API which will tell us if this is a
@@ -286,7 +283,7 @@ class IBKRCmdlineApp:
     quoteState: dict[str, Ticker] = field(default_factory=dict)
     quoteContracts: dict[str, Contract] = field(default_factory=dict)
     depthState: dict[Contract, Ticker] = field(default_factory=dict)
-    # summary: dict[str, float] = field(default_factory=dict)
+    summary: dict[str, float] = field(default_factory=dict)
     position: dict[str, float] = field(default_factory=dict)
     order: dict[str, float] = field(default_factory=dict)
     liveBars: dict[str, RealTimeBarList] = field(default_factory=dict)
@@ -398,7 +395,7 @@ class IBKRCmdlineApp:
 
         if oreq.isSingle():
             contract = contractForName(oreq.orders[0].symbol, exchange=exchange)
-            await self.qualify(contract)
+            cgot = await self.qualify(contract)
 
             # only return success if the contract validated
             if contract.conId:
@@ -432,17 +429,21 @@ class IBKRCmdlineApp:
 
         contractUnderlying = contracts[0].symbol
         reqUnderlying = oreq.orders[0].underlying()
-        if contractUnderlying != reqUnderlying.lstrip("/"):
-            logger.error(
-                "Resolved symbol [{}] doesn't match order underlying [{}]?",
-                contractUnderlying,
-                reqUnderlying,
-            )
-            return None
 
-        if not all(c.symbol == contractUnderlying for c in contracts):
-            logger.error("All contracts must have same underlying for spread!")
-            return None
+        # Temporarily removed because it breaks with weekly index options
+        if False:
+            # FIX for SPX/SPXW
+            if contractUnderlying != reqUnderlying.lstrip("/"):
+                logger.error(
+                    "Resolved symbol [{}] doesn't match order underlying [{}]?",
+                    contractUnderlying,
+                    reqUnderlying,
+                )
+                return None
+
+            if not all(c.symbol == contractUnderlying for c in contracts):
+                logger.error("All contracts must have same underlying for spread!")
+                return None
 
         # Iterate (in MATCHED PAIRS) the resolved contracts with their original order details
         legs = []
@@ -472,6 +473,15 @@ class IBKRCmdlineApp:
         """Weekly index options have symbol names with 'W' but orders are placed without."""
         return name.replace("SPXW", "SPX").replace("RUTW", "RUT").replace("NDXP", "NDX")
 
+    def quoteResolve(self, lookup: str) -> str:
+        """Resolve a local symbol alias like ':33' to current symbol name for the index."""
+
+        # TODO: this doesn't work for futures symbols. Probably need to read the contract type
+        #       to re-apply or internal formatting? futs: /; CFD: CFD; crypto: C; ...
+        return self.quotesPositional[int(lookup[1:])][1].contract.localSymbol.replace(
+            " ", ""
+        )
+
     async def placeOrderForContract(
         self,
         sym: str,
@@ -491,10 +501,21 @@ class IBKRCmdlineApp:
         # turn option contract lookup into non-spaced version
         sym = sym.replace(" ", "")
 
-        logger.info("[{}] Request to order qty {} price {}", sym, qty, price)
+        if price > 0:
+            price = comply(contract, price)
+            logger.info(
+                "[{}] Request to order qty {:,.2f} price {:,.2f}", sym, qty, price
+            )
+        else:
+            logger.info(
+                "[{}] Request to order at dynamic qty/price: {:,.2f} price {:,.2f}",
+                sym,
+                qty,
+                price,
+            )
 
         # need to replace underlying if is "fake settled underlying"
-        quotesym = self.symbolNormalizeIndexWeeklyOptions(sym)
+        quotesym = sym  # self.symbolNormalizeIndexWeeklyOptions(sym)
         await self.dispatch.runop("add", f'"{quotesym}"', self.opstate)
 
         if not contract.conId:
@@ -601,7 +622,7 @@ class IBKRCmdlineApp:
                 # equity, futures, etc get the wider margins
                 mid = round(((bid + ask) / 2) * (1.01 if isLong else 0.99), 2)
 
-            price = mid
+            price = comply(contract, mid)
 
             # since this is in the "negative quantity" block, we convert the
             # negative number to a positive number for representing total
@@ -610,10 +631,10 @@ class IBKRCmdlineApp:
 
             # calculate order quantity for spend budget at current estimated price
             logger.info(
-                "[{}] Trying to order ${:,.2f} worth at ${:,.2f}...", sym, amt, mid
+                "[{}] Trying to order ${:,.2f} worth at ${:,.2f}...", sym, amt, price
             )
 
-            qty = self.quantityForAmount(contract, amt, mid)
+            qty = self.quantityForAmount(contract, amt, price)
 
             if not qty:
                 logger.error(
@@ -621,7 +642,7 @@ class IBKRCmdlineApp:
                     sym,
                     contract,
                     amt,
-                    mid,
+                    price,
                 )
                 return None
 
@@ -637,8 +658,6 @@ class IBKRCmdlineApp:
             )
 
         assert qty > 0
-
-        price = comply(contract, price)
 
         order = orders.IOrder(
             "BUY" if isLong else "SELL", qty, price, outsiderth=outsideRth, tif=tif  # type: ignore
@@ -671,9 +690,6 @@ class IBKRCmdlineApp:
 
         logger.info("[{}] Ordering {} via {}", contract.localSymbol, contract, order)
         trade = self.ib.placeOrder(contract, order)
-        print("\n")
-        print("trade")
-        print(trade)
 
         # TODO: add optional agent-like feature HERE to modify order in steps for buys (+price, -qty)
         #       or for sells (-price).
@@ -998,9 +1014,6 @@ class IBKRCmdlineApp:
         logger.warning("News Tick: {}", news)
 
     def orderExecuteHandler(self, trade, fill):
-        print("abc")
-        print(trade)
-        print("def")
         logger.warning(
             "[{} :: {} :: {}] Trade executed for {}",
             trade.orderStatus.orderId,
@@ -1025,7 +1038,7 @@ class IBKRCmdlineApp:
         """Each row is populated after connection then continually
         updated via subscription while the connection remains active."""
         # logger.info("Updating sumary... {}", v)
-        # self.summary[v.tag] = v.value
+        self.summary[v.tag] = v.value
 
         # regular accounts are U...; sanbox accounts are DU... (apparently)
         # Some fields are for "All" accounts under this login, which don't help us here.
@@ -1050,9 +1063,9 @@ class IBKRCmdlineApp:
         # TODO: keep moving average of daily PNL and trigger sounds/events
         #       if it spikes higher/lower.
         # logger.info("Updating PNL... {}", v)
-        # self.summary["UnrealizedPnL"] = v.unrealizedPnL
-        # self.summary["RealizedPnL"] = v.realizedPnL
-        # self.summary["DailyPnL"] = v.dailyPnL
+        self.summary["UnrealizedPnL"] = v.unrealizedPnL
+        self.summary["RealizedPnL"] = v.realizedPnL
+        self.summary["DailyPnL"] = v.dailyPnL
 
         try:
             self.accountStatus["UnrealizedPnL"] = float(v.unrealizedPnL)
@@ -1599,14 +1612,38 @@ class IBKRCmdlineApp:
             if overnightDeficit < 0:
                 onc = f" (OVERNIGHT REG-T MARGIN CALL: ${-overnightDeficit:,.2f})"
 
+            qs = sorted(self.quoteState.items(), key=sortQuotes)
+            self.quotesPositional = qs
+
+            spxbreakers = ""
+            spx = self.quoteState.get("SPX")
+            if spx:
+                # hack around IBKR quotes being broken over weekends/holdays
+                # NOTE: this isn't valid across weekends because until Monday morning, the "close" is "Thursday close" not frday close. sigh.
+                #       also the SPX symbol never has '.open' value so we can't detect "stale vs. current quote from last close"
+                spxc = spx.close
+                spxl = spx.last
+
+                def undX(spxd, spxIn):
+                    return (spxd / spxIn) * 100
+
+                spxc7 = round(spxc / 1.07, 2)
+                spxcd7 = round(spxl - spxc7, 2)
+
+                spxc13 = round(spxc / 1.13, 2)
+                spxcd13 = round(spxl - spxc13, 2)
+
+                spxc20 = round(spxc / 1.20, 2)
+                spxcd20 = round(spxl - spxc20, 2)
+
+                spxbreakers = f"7%: {spxc7} ({spxcd7}; {undX(spxcd7, spxc7):.2f}%)   13%: {spxc13}  ({spxcd13}; {undX(spxcd13, spxc13):.2f}%)  20%: {spxc20} ({spxcd20}; {undX(spxcd20, spxc20):.2f}%)"
+
             return HTML(
-                f"""{self.now}{onc} [{self.updates:,}]\n"""
+                f"""{self.now}{onc} [{self.updates:,}]                {spxbreakers}\n"""
                 + "\n".join(
                     [
-                        formatTicker(quote)
-                        for sym, quote in sorted(
-                            self.quoteState.items(), key=sortQuotes
-                        )
+                        f"{qp:>2}) " + formatTicker(quote)
+                        for qp, (sym, quote) in enumerate(qs)
                     ]
                 )
                 + "\n"
@@ -1664,13 +1701,13 @@ class IBKRCmdlineApp:
         # Note: these are equivalent to the pattern:
         #           lambda row: self.updateSummary(row)
         self.ib.accountSummaryEvent += self.updateSummary
-        # self.ib.pnlEvent += self.updatePNL
-        # self.ib.orderStatusEvent += self.updateOrder
-        # self.ib.errorEvent += self.errorHandler
-        # self.ib.cancelOrderEvent += self.cancelHandler
-        # self.ib.commissionReportEvent += self.commissionHandler
-        # self.ib.newsBulletinEvent += self.newsBHandler
-        # self.ib.tickNewsEvent += self.newsTHandler
+        self.ib.pnlEvent += self.updatePNL
+        self.ib.orderStatusEvent += self.updateOrder
+        self.ib.errorEvent += self.errorHandler
+        self.ib.cancelOrderEvent += self.cancelHandler
+        self.ib.commissionReportEvent += self.commissionHandler
+        self.ib.newsBulletinEvent += self.newsBHandler
+        self.ib.tickNewsEvent += self.newsTHandler
 
         # We don't use these event types because ib_insync keeps
         # the objects "live updated" in the background, so everytime
@@ -1740,10 +1777,6 @@ class IBKRCmdlineApp:
                     # orders outside of the API (TWS, web interface, mobile) because
                     # the API treats non-API-created orders differently.
 
-                    print(self.host)
-                    print(self.port)
-                    print(self.accountId)
-
                     await self.ib.connectAsync(
                         self.host,
                         self.port,
@@ -1763,7 +1796,7 @@ class IBKRCmdlineApp:
                     await requestMarketData()
 
                     # reset cached states on reconnect so we don't show stale data
-                    # self.summary.clear()
+                    self.summary.clear()
                     self.position.clear()
                     self.order.clear()
                     self.pnlSingle.clear()
@@ -1874,9 +1907,12 @@ class IBKRCmdlineApp:
                 for ccmd in text1.strip().split("\n"):
                     cmd, *rest = ccmd.split(" ", 1)
                     with Timer(cmd):
-                        result = await self.dispatch.runop(
-                            cmd, rest[0] if rest else None, self.opstate
-                        )
+                        try:
+                            result = await self.dispatch.runop(
+                                cmd, rest[0] if rest else None, self.opstate
+                            )
+                        except:
+                            logger.exception("sorry, what now?")
 
                 continue
 
@@ -1970,36 +2006,6 @@ class IBKRCmdlineApp:
                     # reset bar cache so it doesn't grow forever...
                     for k, v in self.liveBars.items():
                         v.clear()
-                elif text1 == "try":
-                    logger.info("Ordering...")
-                    logger.info("QS: {}", self.quoteState["ES"])
-                    contract = Stock("AMD", "SMART", "USD")
-                    order = LimitOrder(
-                        action="BUY",
-                        totalQuantity=500,
-                        lmtPrice=33.33,
-                        algoStrategy="Adaptive",
-                        algoParams=[TagValue("adaptivePriority", "Urgent")],
-                    )
-                    ordstate = await self.ib.whatIfOrderAsync(contract, order)
-                    logger.info("ordstate: {}", ordstate)
-                elif text1 == "tryf":
-                    logger.info("Ordering...")
-                    contract = Future(
-                        currency="USD",
-                        symbol="MES",
-                        lastTradeDateOrContractMonth=FUT_EXP,
-                        exchange="GLOBEX",
-                    )
-                    order = LimitOrder(
-                        action="BUY",
-                        totalQuantity=770,
-                        lmtPrice=400.75,
-                        algoStrategy="Adaptive",
-                        algoParams=[TagValue("adaptivePriority", "Urgent")],
-                    )
-                    ordstate = await self.ib.whatIfOrderAsync(contract, order)
-                    logger.info("ordstate: {}", ordstate)
 
                 if not text1:
                     continue

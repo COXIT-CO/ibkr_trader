@@ -11,13 +11,13 @@ from dotenv import dotenv_values
 import os
 
 CONFIG_DEFAULT = dict(
-    ICLI_IBKR_HOST="172.19.0.2", ICLI_IBKR_PORT=4002, ICLI_REFRESH=3.33
+    ICLI_IBKR_HOST="127.0.0.1", ICLI_IBKR_PORT=4001, ICLI_REFRESH=3.33
 )
 
-CONFIG = {**CONFIG_DEFAULT}
+CONFIG = {**CONFIG_DEFAULT, **dotenv_values(".env.icli"), **os.environ}
 
 try:
-    ACCOUNT_ID = "DU1820017"  # CONFIG["ICLI_IBKR_ACCOUNT_ID"]
+    ACCOUNT_ID = CONFIG["ICLI_IBKR_ACCOUNT_ID"]
 except:
     logger.error(
         "Sorry, please provide your IBKR Account ID [U...] in ICLI_IBKR_ACCOUNT_ID"
@@ -34,17 +34,13 @@ async def initcli():
         accountId=ACCOUNT_ID, toolbarUpdateInterval=REFRESH, host=HOST, port=PORT
     )
     await app.setup()
-    if sys.stdin.isatty():
         # patch entire application with prompt-toolkit-compatible stdout
-        with patch_stdout(raw=True):
-            try:
-                await app.dorepl()
-            except SystemExit:
-                # known good exit condition
-                ...
-    else:
-        # NOT IMPLEMENTED HERE, HOLDOVER FROM TCLI
-        await app.consumeStdin()
+    with patch_stdout(raw=True):
+        try:
+            await app.dorepl()
+        except SystemExit:
+            # known good exit condition
+            ...
 
     app.stop()
 

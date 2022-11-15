@@ -29,7 +29,6 @@ from questionary import Choice
 import pendulum
 import asyncio
 import aiohttp
-import pygame
 
 import prettyprinter as pp
 
