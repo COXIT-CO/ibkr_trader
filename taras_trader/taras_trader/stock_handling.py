@@ -61,7 +61,6 @@ class Stocks:
     stop_write_flag = False
     is_suspended_stocks_processed = False
     ib: IB = field(default_factory=IB)
-    loop = None
     accountStatus: dict[str, float] = field(
         default_factory=lambda: dict(
             zip(LIVE_ACCOUNT_STATUS, [0.00] * len(LIVE_ACCOUNT_STATUS))
@@ -124,10 +123,6 @@ class Stocks:
             except:
                 # don't care, just keep going
                 pass
-
-
-    def set_loop(self, loop):
-        self.loop = loop
 
 
     @classmethod
