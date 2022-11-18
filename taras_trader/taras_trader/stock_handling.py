@@ -465,10 +465,10 @@ class Stocks:
 
 
     @staticmethod
-    def find_time_shift(start_time, actual_time):
-        """return 3 seconds minus time needed to make one loop iteration ('actual_time' - 'start_time')"""
+    def find_time_shift(start_time, actual_time, overall_time):
+        """return 'overall_time' seconds minus time needed to make one loop iteration ('actual_time' - 'start_time')"""
         time_delta = actual_time - start_time
-        time_shift = 3 - (time_delta.seconds + time_delta.microseconds / 1_000_000)
+        time_shift = overall_time - (time_delta.seconds + time_delta.microseconds / 1_000_000)
         return time_shift if time_shift > 0 else 0
 
 
@@ -540,7 +540,7 @@ class Stocks:
                 )
                 break
             
-            await asyncio.sleep(self.find_time_shift(start_time, datetime.datetime.now()))
+            await asyncio.sleep(self.find_time_shift(start_time, datetime.datetime.now(), 3))
             start_time = datetime.datetime.now()
 
 
@@ -550,7 +550,7 @@ class Stocks:
     ):
         """check for order to fill within 5 minutes otherwise cancel it"""
         while trade.log[-1].status != "Filled":
-            time_difference = self.find_time_shift(start_time, datetime.datetime.now())
+            time_difference = self.find_time_shift(start_time, datetime.datetime.now(), 3)
             if time_difference >= 300:
                 self.ib.cancelOrder(order)
                 return False
@@ -628,7 +628,7 @@ class Stocks:
                 )
                 break
             
-            await asyncio.sleep(self.find_time_shift(start_time, datetime.datetime.now()))
+            await asyncio.sleep(self.find_time_shift(start_time, datetime.datetime.now(), 3))
             start_time = datetime.datetime.now()
 
 
@@ -681,7 +681,7 @@ class Stocks:
 
                 break
             
-            await asyncio.sleep(self.find_time_shift(start_time, datetime.datetime.now()))
+            await asyncio.sleep(self.find_time_shift(start_time, datetime.datetime.now(), 3))
             start_time = datetime.datetime.now()
         
 
