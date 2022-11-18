@@ -211,7 +211,7 @@ class Stocks:
         if their total cost affordable having current balance"""
         total_cost = 0
         while True:
-            time_1 = self.get_time_in_seconds()
+            start_time = datetime.datetime.now()
             for stock_symbol, quantities in self.stocks_quantity.items():
                 for quantity in quantities:
                     if isinstance(quantity, str) and quantity.startswith("$"):
@@ -219,13 +219,12 @@ class Stocks:
                     else:
                         current_price = await self.get_valid_current_price(stock_symbol)
                         total_cost += current_price * int(quantity)
-            time_2 = self.get_time_in_seconds()
-            # if it took nore than 10 seconds to calculate total cost 
+            # if it took nore than 5 seconds to calculate total cost 
             # do it again to assure actual stock prices esle return the results
-            if time_2 - time_1 <= 10:
+            time_shift = self.find_time_shift(start_time, datetime.datetime.now(), 5)
+            if time_shift <= 5:
                 break
-            time.sleep(time_2 - time_1)
-            time_1 = self.get_time_in_seconds()
+            await asyncio.sleep(time_shift)
             total_cost = 0
         
         return total_cost > self.accountStatus['TotalCashValue'], self.accountStatus['TotalCashValue'], total_cost
