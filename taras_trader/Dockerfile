@@ -5,7 +5,7 @@ WORKDIR /app
 ENTRYPOINT ["tail", "-f", "/dev/null"]
 COPY . .
 RUN apt-get update -y
-RUN apt-get install -y apt-utils python3-venv python3-pip
+RUN apt-get install -y apt-utils python3-venv
 RUN pip install --upgrade pip
 RUN pip install --upgrade setuptools supertools
 RUN pip install ez_setup 
