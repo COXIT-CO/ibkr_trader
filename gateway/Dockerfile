@@ -13,5 +13,5 @@ RUN dbus-uuidgen > /etc/machine-id
 # in Gateway window
 RUN unset DISPLAY
 RUN echo '\n' | ./ibgateway-stable-standalone-linux-x64.sh --assume-yes
-WORKDIR "/root/Jts/ibgateway/1012"
+WORKDIR "/root/Jts/ibgateway/1019"
 CMD ./ibgateway
