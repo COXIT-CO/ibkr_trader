@@ -57,13 +57,19 @@ def replace_stocks_being_processed(
         data_to_dump = collections.OrderedDict([
             ('fill', 'off'), 
             ('order', {
-                'buy': [
-                    {"stocks": ""}, 
-                    {"conditions": ""}
-                ], 
+                'buy': [{
+                    "stocks": [
+                        {"STOCK_NAME": "stock_quantity or price floating point price in dollars"}
+                    ], 
+                    "conditions": [
+                        {"type": "trailing-limit"},
+                        {"trailing-drop-percent": "x"},
+                        {"trailing-up-percent": "y"},
+                    ],
+                }], 
                 'sell': [
-                    {"stocks": ""}, 
-                    {"conditions": ""}
+                    {"type": "trailing-limit"}, 
+                    {"trailing-drop-percent": "z"},
                 ]
                 }
             )
@@ -83,13 +89,19 @@ def replace_stocks_being_processed(
             ('warning', 
         "previous stocks are being processed, please, don't put other ones until this title dissapears"),
             ('order', {
-                'buy': [
-                    {"stocks": ""}, 
-                    {"conditions": ""}
-                ], 
+                'buy': [{
+                    "stocks": [
+                        {"STOCK_NAME": "stock_quantity or price floating point price in dollars"}
+                    ], 
+                    "conditions": [
+                        {"type": "trailing-limit"},
+                        {"trailing-drop-percent": "x"},
+                        {"trailing-up-percent": "y"},
+                    ],
+                }], 
                 'sell': [
-                    {"stocks": ""}, 
-                    {"conditions": ""}
+                    {"type": "trailing-limit"}, 
+                    {"trailing-drop-percent": "z"},
                 ]
                 }
             )
@@ -124,7 +136,7 @@ def process_scraped_stock_data(data_to_process):
             stock_symbol = list(stock.keys())[0]
             stock_info = {stock_symbol: {}}
             try:
-                stock_info[stock_symbol]["quantity"] = int(list(stock.values())[0])
+                stock_info[stock_symbol]["quantity"] = float(list(stock.values())[0])
             except ValueError:
                 stock_info[stock_symbol]["quantity"] = str(list(stock.values())[0])
             stock_info[stock_symbol]["drop_percent"] = float(item['conditions'][1]['trailing-drop-percent'])

@@ -1,25 +1,24 @@
-from cmath import nan
-import sys
-sys.path.append("site-packages")
-import time
-
 #!/usr/bin/env python3
 
 original_print = print
+from prompt_toolkit import print_formatted_text, Application
 
 # from prompt_toolkit import print_formatted_text as print
 from prompt_toolkit.formatted_text import HTML
 
+import pathlib
 import bs4
 import re
 
 # http://www.grantjenks.com/docs/diskcache/
 import diskcache
 
-from taras_trader import orders
+from icli.futsexchanges import FUTS_EXCHANGE
+import icli.orders as orders
+import decimal
 import sys
 
-from collections import defaultdict
+from collections import Counter, defaultdict
 from dataclasses import dataclass, field
 import datetime
 import os
@@ -30,6 +29,8 @@ from typing import Union, Optional, Sequence, Any, Mapping
 import numpy as np
 
 import pendulum
+
+import pandas as pd
 
 # for automatic money formatting in some places
 import locale
@@ -42,12 +43,13 @@ import os
 # Tell pygame to not print a hello message when it is imported
 os.environ["PYGAME_HIDE_SUPPORT_PROMPT"] = "hide"
 
-
 import ib_insync
 from ib_insync import (
     IB,
     Contract,
+    Trade,
     Bag,
+    ComboLeg,
     Ticker,
     RealTimeBarList,
     PnLSingle,
@@ -55,7 +57,6 @@ from ib_insync import (
     NewsBulletin,
     NewsTick,
     Index,
-    Stock,
 )
 import asyncio
 
@@ -64,8 +65,10 @@ from loguru import logger
 
 import seaborn
 
-from taras_trader import helpers
-from mutil.numeric import fmtPricePad
+import icli.lang as lang
+from icli.helpers import *  # FUT_EXP is appearing from here
+from mutil.numeric import fmtPrice, fmtPricePad
+from mutil.timer import Timer
 import tradeapis.buylang as buylang
 
 
@@ -170,8 +173,8 @@ logger.remove()
 logger.add(asink, colorize=True)
 
 # new log level to disable color bolding on INFO default
-# logger.level("FRAME", no=25)
-# logger.level("ARGS", no=40, color="<blue>")
+logger.level("FRAME", no=25)
+logger.level("ARGS", no=40, color="<blue>")
 
 
 def readableHTML(html):
@@ -194,7 +197,52 @@ from prompt_toolkit.shortcuts import set_title
 import asyncio
 import os
 
-stocks = ["AAPL", "AMZN", "TSLA"]
+stocks = ["IWM", "QQQ", "SPY", "UVXY", "AAPL", "SBUX", "TSM"]
+
+# Futures to exchange mappings:
+# https://www.interactivebrokers.com/en/index.php?f=26662
+# Note: Use ES and RTY and YM for quotes because higher volume
+#       also curiously, MNQ has more volume than NQ?
+# Volumes at: https://www.cmegroup.com/trading/equity-index/us-index.html
+# ES :: MES
+# RTY :: M2K
+# YM :: MYM
+# NQ :: MNQ
+sfutures = {
+    "GLOBEX": ["ES", "RTY", "MNQ", "GBP"],  # "HE"],
+    "ECBOT": ["YM"],  # , "TN", "ZF"],
+    #    "NYMEX": ["GC", "QM"],
+}
+
+# Discovered via mainly: https://www.linnsoft.com/support/symbol-guide-ib
+# The DJI / DOW / INDU quotes don't work.
+# The NDX / COMP quotes require differen't data not included in default packages.
+#    Index("COMP", "NASDAQ"),
+idxs = [
+    Index("SPX", "CBOE"),
+    # No NANOS because most brokers don't offer it and it has basically no volume
+    # Index("NANOS", "CBOE"),  # SPY-priced index options with no multiplier
+    Index("VIN", "CBOE"),  # VIX Front-Month Component (near term)
+    Index("VIF", "CBOE"),  # VIX Back-Month Component (far term)
+    Index("VIX", "CBOE"),  # VIX Currently
+    # No VOL-NYSE because it displays billions of shares and breaks our views
+    # Index("VOL-NYSE", "NYSE"),
+    Index("TICK-NYSE", "NYSE"),
+    # > 1 == selling pressure, < 1 == buying pressure; somewhat
+    Index("TRIN-NYSE", "NYSE"),
+    # Advancing minus Declining (bid is Advance, ask is Decline) (no idea what the bid/ask qtys represent)
+    Index("AD-NYSE", "NYSE"),
+]
+
+# Note: ContFuture is only for historical data; it can't quote or trade.
+# So, all trades must use a manual contract month (quarterly)
+futures = [
+    Future(symbol=sym, lastTradeDateOrContractMonth=FUT_EXP, exchange=x, currency="USD")
+    for x, syms in sfutures.items()
+    for sym in syms
+]
+
+# logger.info("futures are: {}", futures)
 
 
 @dataclass
@@ -207,7 +255,7 @@ class IBKRCmdlineApp:
     toolbarUpdateInterval: float = 2.22
 
     host: str = "127.0.0.1"
-    port: int = 4002
+    port: int = 4001
 
     # initialized to True/False when we first see the account
     # ID returned from the API which will tell us if this is a
@@ -332,95 +380,107 @@ class IBKRCmdlineApp:
 
         return results
 
-    # async def contractForOrderRequest(
-    #     self, oreq: buylang.OrderRequest, exchange="SMART"
-    # ) -> Optional[Contract]:
-    #     """Return a valid qualified contract for any order request.
+    async def contractForOrderRequest(
+        self, oreq: buylang.OrderRequest, exchange="SMART"
+    ) -> Optional[Contract]:
+        """Return a valid qualified contract for any order request.
 
-    #     If order request has multiple legs, returns a Bag contract representing the spread.
-    #     If order request only has one symbol, returns a regular future/stock/option contract.
+        If order request has multiple legs, returns a Bag contract representing the spread.
+        If order request only has one symbol, returns a regular future/stock/option contract.
 
-    #     If symbol(s) in order request are not valid, returns None."""
+        If symbol(s) in order request are not valid, returns None."""
 
-    #     if oreq.isSpread():
-    #         return await self.bagForSpread(oreq, exchange)
+        if oreq.isSpread():
+            return await self.bagForSpread(oreq, exchange)
 
-    #     if oreq.isSingle():
-    #         contract = contractForName(oreq.orders[0].symbol, exchange=exchange)
-    #         await self.qualify(contract)
+        if oreq.isSingle():
+            contract = contractForName(oreq.orders[0].symbol, exchange=exchange)
+            cgot = await self.qualify(contract)
 
-    #         # only return success if the contract validated
-    #         if contract.conId:
-    #             return contract
+            # only return success if the contract validated
+            if contract.conId:
+                return contract
 
-    #         return None
+            return None
 
-    #     # else, order request had no orders...
-    #     return None
+        # else, order request had no orders...
+        return None
 
-    # async def bagForSpread(
-    #     self, oreq: buylang.OrderRequest, exchange="SMART", currency="USD"
-    # ) -> Optional[Bag]:
-    #     """Given a multi-leg OrderRequest, return a qualified Bag contract.
+    async def bagForSpread(
+        self, oreq: buylang.OrderRequest, exchange="SMART", currency="USD"
+    ) -> Optional[Bag]:
+        """Given a multi-leg OrderRequest, return a qualified Bag contract.
 
-    #     If legs do not validate, returns None and prints errors along the way."""
+        If legs do not validate, returns None and prints errors along the way."""
 
-    #     # For IBKR spreads ("Bag" contracts), each leg of the spread is qualified
-    #     # then placed in the final contract instead of the normal approach of qualifying
-    #     # the final contract itself (because Bag contracts have Legs and each Leg is only
-    #     # a contractId we have to look up via qualify() individually).
-    #     contracts = [
-    #         contractForName(s.symbol, exchange=exchange, currency=currency)
-    #         for s in oreq.orders
-    #     ]
-    #     await self.qualify(*contracts)
+        # For IBKR spreads ("Bag" contracts), each leg of the spread is qualified
+        # then placed in the final contract instead of the normal approach of qualifying
+        # the final contract itself (because Bag contracts have Legs and each Leg is only
+        # a contractId we have to look up via qualify() individually).
+        contracts = [
+            contractForName(s.symbol, exchange=exchange, currency=currency)
+            for s in oreq.orders
+        ]
+        await self.qualify(*contracts)
 
-    #     if not all(c.conId for c in contracts):
-    #         logger.error("Not all contracts qualified!")
-    #         return None
+        if not all(c.conId for c in contracts):
+            logger.error("Not all contracts qualified!")
+            return None
 
-    #     contractUnderlying = contracts[0].symbol
-    #     reqUnderlying = oreq.orders[0].underlying()
-    #     if contractUnderlying != reqUnderlying.lstrip("/"):
-    #         logger.error(
-    #             "Resolved symbol [{}] doesn't match order underlying [{}]?",
-    #             contractUnderlying,
-    #             reqUnderlying,
-    #         )
-    #         return None
+        contractUnderlying = contracts[0].symbol
+        reqUnderlying = oreq.orders[0].underlying()
 
-    #     if not all(c.symbol == contractUnderlying for c in contracts):
-    #         logger.error("All contracts must have same underlying for spread!")
-    #         return None
+        # Temporarily removed because it breaks with weekly index options
+        if False:
+            # FIX for SPX/SPXW
+            if contractUnderlying != reqUnderlying.lstrip("/"):
+                logger.error(
+                    "Resolved symbol [{}] doesn't match order underlying [{}]?",
+                    contractUnderlying,
+                    reqUnderlying,
+                )
+                return None
 
-    #     # Iterate (in MATCHED PAIRS) the resolved contracts with their original order details
-    #     legs = []
+            if not all(c.symbol == contractUnderlying for c in contracts):
+                logger.error("All contracts must have same underlying for spread!")
+                return None
 
-    #     # We use more explicit exchange mapping here since future options
-    #     # require naming their exchanges instead of using SMART everywhere.
-    #     useExchange: str
-    #     for c, o in zip(contracts, oreq.orders):
-    #         useExchange = c.exchange
-    #         leg = ComboLeg(
-    #             conId=c.conId,
-    #             ratio=o.multiplier,
-    #             action="BUY" if o.isBuy() else "SELL",
-    #             exchange=c.exchange,
-    #         )
+        # Iterate (in MATCHED PAIRS) the resolved contracts with their original order details
+        legs = []
 
-    #         legs.append(leg)
+        # We use more explicit exchange mapping here since future options
+        # require naming their exchanges instead of using SMART everywhere.
+        useExchange: str
+        for c, o in zip(contracts, oreq.orders):
+            useExchange = c.exchange
+            leg = ComboLeg(
+                conId=c.conId,
+                ratio=o.multiplier,
+                action="BUY" if o.isBuy() else "SELL",
+                exchange=c.exchange,
+            )
 
-    #     return Bag(
-    #         symbol=contractUnderlying,
-    #         exchange=useExchange or exchange,
-    #         comboLegs=legs,
-    #         currency=currency,
-    #     )
+            legs.append(leg)
+
+        return Bag(
+            symbol=contractUnderlying,
+            exchange=useExchange or exchange,
+            comboLegs=legs,
+            currency=currency,
+        )
 
     def symbolNormalizeIndexWeeklyOptions(self, name: str) -> str:
         """Weekly index options have symbol names with 'W' but orders are placed without."""
         return name.replace("SPXW", "SPX").replace("RUTW", "RUT").replace("NDXP", "NDX")
 
+    def quoteResolve(self, lookup: str) -> str:
+        """Resolve a local symbol alias like ':33' to current symbol name for the index."""
+
+        # TODO: this doesn't work for futures symbols. Probably need to read the contract type
+        #       to re-apply or internal formatting? futs: /; CFD: CFD; crypto: C; ...
+        return self.quotesPositional[int(lookup[1:])][1].contract.localSymbol.replace(
+            " ", ""
+        )
 
     async def placeOrderForContract(
         self,
@@ -428,7 +488,7 @@ class IBKRCmdlineApp:
         isLong: bool,
         contract: Contract,
         qty: float,
-        lmt: float,
+        price: float,
         orderType: str,
         preview=False,
     ):
@@ -441,43 +501,65 @@ class IBKRCmdlineApp:
         # turn option contract lookup into non-spaced version
         sym = sym.replace(" ", "")
 
-        # logger.info("[{}] Request to order qty {} price {}", sym, qty, price)
+        if price > 0:
+            price = comply(contract, price)
+            logger.info(
+                "[{}] Request to order qty {:,.2f} price {:,.2f}", sym, qty, price
+            )
+        else:
+            logger.info(
+                "[{}] Request to order at dynamic qty/price: {:,.2f} price {:,.2f}",
+                sym,
+                qty,
+                price,
+            )
 
         # need to replace underlying if is "fake settled underlying"
-        # quotesym = self.symbolNormalizeIndexWeeklyOptions(sym)
-        # await self.dispatch.runop("add", f'"{quotesym}"', self.opstate)
+        quotesym = sym  # self.symbolNormalizeIndexWeeklyOptions(sym)
+        await self.dispatch.runop("add", f'"{quotesym}"', self.opstate)
 
-        # if not contract.conId:
-        #     # spead contracts don't have IDs, so only reject if NOT a spread here.
-        #     if contract.tradingClass != "COMB":
-        #         logger.error(
-        #             "[{} :: {}] Not submitting order because contract not qualified!",
-        #             sym,
-        #             quotesym,
-        #         )
-        #         return None
+        if not contract.conId:
+            # spead contracts don't have IDs, so only reject if NOT a spread here.
+            if contract.tradingClass != "COMB":
+                logger.error(
+                    "[{} :: {}] Not submitting order because contract not qualified!",
+                    sym,
+                    quotesym,
+                )
+                return None
 
-        # if isinstance(contract, (Option, Bag)) or contract.tradingClass == "COMB":
-        #     # Purpose: don't trigger warning about "RTH option has no effect" with options...
-        #     # TODO: check if RTH includes extended late 4:15 ending options SPY / SPX / QQQ / IWM / etc?
-        #     if contract.localSymbol[0:3] in {"SPX", "VIX"}:
-        #         # SPX and VIX options now trade 23/5 but anything not 0930-1600 (maybe even to 1615?) is
-        #         # considered "outside RTH"
-        #         outsideRth = True
-        #     else:
-        #         outsideRth = False
-        # else:
-        #     # Algos can only operate RTH:
-        #     if " " in orderType or (
-        #         orderType
-        #         in {"MIDPRICE", "MKT + ADAPTIVE + FAST", "LMT + ADAPTIVE + FAST"}
-        #     ):
-        #         outsideRth = False
-        #     else:
+        if isinstance(contract, (Option, Bag)) or contract.tradingClass == "COMB":
+            # Purpose: don't trigger warning about "RTH option has no effect" with options...
+            # TODO: check if RTH includes extended late 4:15 ending options SPY / SPX / QQQ / IWM / etc?
+            if contract.localSymbol[0:3] in {"SPX", "VIX"}:
+                # SPX and VIX options now trade 23/5 but anything not 0930-1600 (maybe even to 1615?) is
+                # considered "outside RTH"
+                outsideRth = True
+            else:
+                outsideRth = False
+        else:
+            # Algos can only operate RTH:
+            if " " in orderType or (
+                orderType
+                in {"MIDPRICE", "MKT + ADAPTIVE + FAST", "LMT + ADAPTIVE + FAST"}
+            ):
+                outsideRth = False
+            else:
                 # REL and LMT/MKT/MOO/MOC orders can be outside RTH
-        outsideRth = True
+                outsideRth = True
 
         # TODO: cleanup, also verify how we want to run FAST or EVICT outside RTH?
+        if " " in orderType or (
+            orderType in {"MIDPRICE", "MKT + ADAPTIVE + FAST", "LMT + ADAPTIVE + FAST"}
+        ):
+            outsideRth = False
+
+        if isinstance(contract, Crypto) and isLong:
+            # Crypto can only use IOC or Minutes for tif BUY
+            # (but for SELL, can use IOC, Minutes, Day, GTC)
+            tif = "Minutes"
+        else:
+            tif = "GTC"
 
         # Negative 'qty' is a dollar amount to buy instead of share/contract
         # quantity, so we fetch a live quote to determine the initial quantity.
@@ -529,8 +611,18 @@ class IBKRCmdlineApp:
             #  SHORT means allow LOWER prices for selling (worse entries the lower it goes)).
             # We expect the market NBBO to be our actual bounds here, but we're adjusting the
             # overall price for quicker fills.
+            if isinstance(contract, Option):
+                # Options retain "regular" midpoint behavior because spreads can be wide.
+                mid = round(((bid + ask) / 2), 2)
 
-            price = mid = round(((bid + ask) / 2) * (1.01 if isLong else 0.99), 2)
+                # if no bid (nan), just play off the ask.
+                if mid != mid:
+                    mid = round(ask / 2, 2)
+            else:
+                # equity, futures, etc get the wider margins
+                mid = round(((bid + ask) / 2) * (1.01 if isLong else 0.99), 2)
+
+            price = comply(contract, mid)
 
             # since this is in the "negative quantity" block, we convert the
             # negative number to a positive number for representing total
@@ -539,10 +631,10 @@ class IBKRCmdlineApp:
 
             # calculate order quantity for spend budget at current estimated price
             logger.info(
-                "[{}] Trying to order ${:,.2f} worth at ${:,.2f}...", sym, amt, mid
+                "[{}] Trying to order ${:,.2f} worth at ${:,.2f}...", sym, amt, price
             )
 
-            qty = self.quantityForAmount(contract, amt, mid)
+            qty = self.quantityForAmount(contract, amt, price)
 
             if not qty:
                 logger.error(
@@ -550,7 +642,7 @@ class IBKRCmdlineApp:
                     sym,
                     contract,
                     amt,
-                    mid,
+                    price,
                 )
                 return None
 
@@ -567,15 +659,8 @@ class IBKRCmdlineApp:
 
         assert qty > 0
 
-        # price = comply(contract, price)
-
         order = orders.IOrder(
-            "BUY" if isLong else "SELL", 
-            qty, 
-            # price, 
-            outsiderth=outsideRth, 
-            tif="GTC", 
-            lmt=lmt,
+            "BUY" if isLong else "SELL", qty, price, outsiderth=outsideRth, tif=tif  # type: ignore
         ).order(orderType)
 
         if preview:
@@ -605,8 +690,6 @@ class IBKRCmdlineApp:
 
         logger.info("[{}] Ordering {} via {}", contract.localSymbol, contract, order)
         trade = self.ib.placeOrder(contract, order)
-        print("trade")
-        print(trade)
 
         # TODO: add optional agent-like feature HERE to modify order in steps for buys (+price, -qty)
         #       or for sells (-price).
@@ -622,41 +705,41 @@ class IBKRCmdlineApp:
 
         return order, trade
 
-    # def amountForTrade(
-    #     self, trade: Trade
-    # ) -> tuple[float, float, float, Union[float, int]]:
-    #     """Return dollar amount of trade given current limit price and quantity.
+    def amountForTrade(
+        self, trade: Trade
+    ) -> tuple[float, float, float, Union[float, int]]:
+        """Return dollar amount of trade given current limit price and quantity.
 
-    #     Also compensates for contract multipliers correctly.
+        Also compensates for contract multipliers correctly.
 
-    #     Returns:
-    #         - calculated remaining amount
-    #         - calculated total amount
-    #         - current limit price
-    #         - current quantity remaining
-    #     """
+        Returns:
+            - calculated remaining amount
+            - calculated total amount
+            - current limit price
+            - current quantity remaining
+        """
 
-    #     currentPrice = trade.order.lmtPrice
-    #     currentQty = trade.orderStatus.remaining
-    #     totalQty = currentQty + trade.orderStatus.filled
-    #     avgFillPrice = trade.orderStatus.avgFillPrice
+        currentPrice = trade.order.lmtPrice
+        currentQty = trade.orderStatus.remaining
+        totalQty = currentQty + trade.orderStatus.filled
+        avgFillPrice = trade.orderStatus.avgFillPrice
 
-    #     # If contract has multiplier (like 100 underlying per option),
-    #     # calculate total spend with mul * p * q.
-    #     # The default "no multiplier" value is '', so this check should be fine.
-    #     if isinstance(trade.contract, Future):
-    #         # FUTURES HACK BECAUSE WE DO EXTERNAL MARGIN CALCULATIONS REGARDLESS OF MULTIPLIER
-    #         mul = 1
-    #     else:
-    #         mul = int(trade.contract.multiplier) if trade.contract.multiplier else 1
+        # If contract has multiplier (like 100 underlying per option),
+        # calculate total spend with mul * p * q.
+        # The default "no multiplier" value is '', so this check should be fine.
+        if isinstance(trade.contract, Future):
+            # FUTURES HACK BECAUSE WE DO EXTERNAL MARGIN CALCULATIONS REGARDLESS OF MULTIPLIER
+            mul = 1
+        else:
+            mul = int(trade.contract.multiplier) if trade.contract.multiplier else 1
 
-    #     # use average price IF fills have happened, else use current limit price
-    #     return (
-    #         currentQty * currentPrice * mul,
-    #         totalQty * (avgFillPrice or currentPrice) * mul,
-    #         currentPrice,
-    #         currentQty,
-    #     )
+        # use average price IF fills have happened, else use current limit price
+        return (
+            currentQty * currentPrice * mul,
+            totalQty * (avgFillPrice or currentPrice) * mul,
+            currentPrice,
+            currentQty,
+        )
 
     def quantityForAmount(
         self, contract: Contract, amount: float, limitPrice: float
@@ -905,14 +988,6 @@ class IBKRCmdlineApp:
         # TODO: figure out the bug ehre, sometimes if they play back-to-back too fast, the
         #       entire program locks up in a 100% CPU loop until manually kill -9'd?
 
-        # if self.alert:
-        #     pygame.mixer.music.stop()
-
-        #     if fill.execution.side == "BOT":
-        #         pygame.mixer.music.play()
-        #     elif fill.execution.side == "SLD":
-        #         pygame.mixer.music.play()
-
         logger.warning(
             "[{} :: {} :: {}] Order {} commission: {} {} {} at ${:,.2f} (total {} of {}) (commission {} ({} each)){}",
             trade.orderStatus.orderId,
@@ -1066,9 +1141,6 @@ class IBKRCmdlineApp:
         # Fields described at:
         # https://ib-insync.readthedocs.io/api.html#module-ib_insync.ticker
         def formatTicker(c):
-            # logger.info("yes")
-            # logger.info(c)
-            # logger.info((c.bid + c.ask) / 2)
             # ibkr API keeps '.close' as the previous full market day close until the next
             # full market day, so for example over the weekend where there isn't a new "full
             # market day," the '.close' is always Thursday's close, while '.last' will be the last
@@ -1093,18 +1165,8 @@ class IBKRCmdlineApp:
             if c.bid > 0 and c.bid == c.bid and c.ask > 0 and c.ask == c.ask:
                 # TODO: add proper rounding for futures tick sizes
                 usePrice = round((c.bid + c.ask) / 2, 2)
-                # s = f"{1}, {dict(bid=c.bid, ask=c.ask, last=c.last, close=c.close, high=c.high, low=c.low, markPrice=c.markPrice)}"
-                # time.sleep(1.5)
-                # logger.info(s)
-                # logger.info(c.marketPrice())
-                # logger.info(c.midpoint())
-                # logger.info(usePrice)
             else:
                 usePrice = c.last if c.last == c.last else c.close
-                # s = f"{2}, {dict(bid=c.bid, ask=c.ask, last=c.last, close=c.close)}"
-                # time.sleep(1.5)
-                # logger.info(s)
-                # logger.info(c.close)
 
             if (c.high == c.high and c.low == c.low) or (c.bid > 0 and c.ask > 0):
                 # only update EMA if this has price-like details and isn't TRIN/TICK/AD
@@ -1550,17 +1612,38 @@ class IBKRCmdlineApp:
             if overnightDeficit < 0:
                 onc = f" (OVERNIGHT REG-T MARGIN CALL: ${-overnightDeficit:,.2f})"
 
-            # [formatTicker(quote) for sym, quote in sorted(self.quoteState.items(), key=sortQuotes)]
+            qs = sorted(self.quoteState.items(), key=sortQuotes)
+            self.quotesPositional = qs
 
-            # return None
+            spxbreakers = ""
+            spx = self.quoteState.get("SPX")
+            if spx:
+                # hack around IBKR quotes being broken over weekends/holdays
+                # NOTE: this isn't valid across weekends because until Monday morning, the "close" is "Thursday close" not frday close. sigh.
+                #       also the SPX symbol never has '.open' value so we can't detect "stale vs. current quote from last close"
+                spxc = spx.close
+                spxl = spx.last
+
+                def undX(spxd, spxIn):
+                    return (spxd / spxIn) * 100
+
+                spxc7 = round(spxc / 1.07, 2)
+                spxcd7 = round(spxl - spxc7, 2)
+
+                spxc13 = round(spxc / 1.13, 2)
+                spxcd13 = round(spxl - spxc13, 2)
+
+                spxc20 = round(spxc / 1.20, 2)
+                spxcd20 = round(spxl - spxc20, 2)
+
+                spxbreakers = f"7%: {spxc7} ({spxcd7}; {undX(spxcd7, spxc7):.2f}%)   13%: {spxc13}  ({spxcd13}; {undX(spxcd13, spxc13):.2f}%)  20%: {spxc20} ({spxcd20}; {undX(spxcd20, spxc20):.2f}%)"
+
             return HTML(
-                f"""{self.now}{onc} [{self.updates:,}]\n"""
+                f"""{self.now}{onc} [{self.updates:,}]                {spxbreakers}\n"""
                 + "\n".join(
                     [
-                        formatTicker(quote)
-                        for sym, quote in sorted(
-                            self.quoteState.items(), key=sortQuotes
-                        )
+                        f"{qp:>2}) " + formatTicker(quote)
+                        for qp, (sym, quote) in enumerate(qs)
                     ]
                 )
                 + "\n"
@@ -1569,6 +1652,22 @@ class IBKRCmdlineApp:
         except:
             logger.exception("qua?")
             return HTML("No data yet...")  # f"""{self.now:<40}\n""")
+
+    async def qask(self, terms) -> Union[dict[str, Any], None]:
+        """Ask a questionary survey using integrated existing toolbar showing"""
+        result = dict()
+        extraArgs = dict(bottom_toolbar=self.bottomToolbar, refresh_interval=0.750)
+        for t in terms:
+            got = await t.ask(**extraArgs)
+
+            # if user canceled, give up
+            # See: https://questionary.readthedocs.io/en/stable/pages/advanced.html#keyboard-interrupts
+            if got is None:
+                return None
+
+            result[t.name] = got
+
+        return result
 
     def levelName(self):
         if self.isSandbox is None:
@@ -1585,17 +1684,17 @@ class IBKRCmdlineApp:
         # wait until we start getting data from the gateway...
         loop = asyncio.get_event_loop()
 
-        # self.dispatch = lang.Dispatch()
-        # pygame.mixer.init()
-
-        # TODO: could probably just be: pathlib.Path(__file__).parent
-        # pygame.mixer.music.load(pathlib.Path(__file__).parent / "CANYON.MID")
+        self.dispatch = lang.Dispatch()
 
         contracts = [Stock(sym, "SMART", "USD") for sym in stocks]
-        # contracts += futures
-        # contracts += idxs
+        contracts += futures
+        contracts += idxs
 
         # flip to enable/disable verbose ib_insync library logging
+        if False:
+            import logging
+
+            ib_insync.util.logToConsole(logging.INFO)
 
         # Attach IB events *outside* of the reconnect loop because we don't want to
         # add duplicate event handlers on every reconnect!
@@ -1628,15 +1727,15 @@ class IBKRCmdlineApp:
         self.ib.updatePortfolioEvent += lambda row: self.updatePosition(row)
 
         async def requestMarketData():
-            # logger.info("Requesting market data...")
+            logger.info("Requesting market data...")
 
             # resubscribe to active quotes
             # remove all quotes and re-subscribe to the current quote state
-            # logger.info("[quotes] Restoring quote state...")
-            # self.quoteState.clear()
+            logger.info("[quotes] Restoring quote state...")
+            self.quoteState.clear()
 
-            # await self.dispatch.runop("qrestore", "global", self.opstate)
-            # logger.info("[quotes] All quotes subscribed!")
+            await self.dispatch.runop("qrestore", "global", self.opstate)
+            logger.info("[quotes] All quotes subscribed!")
 
             # We used to think this needed to be called before each new market data request, but
             # apparently it works fine now only set once up front?
@@ -1653,13 +1752,12 @@ class IBKRCmdlineApp:
                 # Also can subscribe to live news feed per symbol with tick 292 (news result
                 # returned via tickNewsEvent callback, we think)
 
-                tickFields = helpers.tickFieldsForContract(contract)
+                tickFields = tickFieldsForContract(contract)
                 self.quoteState[contract.symbol] = self.ib.reqMktData(
                     contract, tickFields
                 )
 
                 self.quoteContracts[contract.symbol] = contract
-
 
         async def reconnect():
             # don't reconnect if an exit is requested
@@ -1682,7 +1780,7 @@ class IBKRCmdlineApp:
                     await self.ib.connectAsync(
                         self.host,
                         self.port,
-                        clientId=1,
+                        clientId=0,
                         readonly=False,
                         account=self.accountId,
                     )
@@ -1713,6 +1811,27 @@ class IBKRCmdlineApp:
                         self.pnlSingle[p.contract.conId] = self.ib.reqPnLSingle(
                             self.accountId, "", p.contract.conId
                         )
+
+                    if False:
+                        # Optionally we can subscribe to live bars for futures if we
+                        # want to run a real time futures price algo too.
+                        lookupBars = [
+                            Future(
+                                symbol="MES",
+                                exchange="GLOBEX",
+                                lastTradeDateOrContractMonth=FUT_EXP,
+                            ),
+                            Future(
+                                symbol="MNQ",
+                                exchange="GLOBEX",
+                                lastTradeDateOrContractMonth=FUT_EXP,
+                            ),
+                        ]
+
+                        self.liveBars = {
+                            c.symbol: self.ib.reqRealTimeBars(c, 5, "TRADES", False)
+                            for c in lookupBars
+                        }
 
                     # run some startup accounting subscriptions concurrently
                     await asyncio.gather(
@@ -1771,42 +1890,125 @@ class IBKRCmdlineApp:
         loop.create_task(updateToolbar())
 
         # Primary REPL loop
-        from taras_trader import stock_handling
-        stock = stock_handling.Stocks()
-        stock.set_ib(self.ib)
-        stock.set_loop(loop)
-        stock.subscribe_market_data()
         while True:
             try:
-                # extracted_data = helpers.extract_data_from_yaml_file("out.yaml")
-                # print(extracted_data)
-                # await asyncio.sleep(1)
-                await stock.run()
-                break
-
-                # place_order.Stocks.run(self.ib)
-                # for _, c in self.quoteState.items():
-                #     print(c)
-                #     logger.info((type(c.midpoint()), math.isnan(c.midpoint()), c.midpoint()))
-                #     time.sleep(1)
-                # extracted_data = 
-
-                # # logger.info("\n")
-                # await asyncio.sleep(2)
-
-                # await asyncio.sleep(3)
-                # logger.info(text1)
+                text1 = await session.prompt_async(
+                    f"{self.levelName()}> ",
+                    bottom_toolbar=self.bottomToolbar,
+                    # refresh_interval=3,
+                    # mouse_support=True,
+                    # completer=completer, # <-- causes not to be full screen due to additional dropdown space
+                    complete_in_thread=True,
+                    complete_while_typing=True,
+                )
 
                 # Attempt to run the command(s) submitted into the prompt
                 # (allow pasting multiple newline commands)
-                # for ccmd in text1.strip().split("\n"):
-                #     cmd, *rest = ccmd.split(" ", 1)
-                #     with Timer(cmd):
-                #         result = await self.dispatch.runop(
-                #             cmd, rest[0] if rest else None, self.opstate
-                #         )
+                for ccmd in text1.strip().split("\n"):
+                    cmd, *rest = ccmd.split(" ", 1)
+                    with Timer(cmd):
+                        try:
+                            result = await self.dispatch.runop(
+                                cmd, rest[0] if rest else None, self.opstate
+                            )
+                        except:
+                            logger.exception("sorry, what now?")
 
                 continue
+
+                if text1.startswith("rcheck "):
+                    cmd, base, pct = text1.split()
+                    base = float(base)
+                    pct = float(pct) / 100
+
+                    lower, upper = boundsByPercentDifference(base, pct)
+                    lowmid = base - lower
+                    logger.info(
+                        "Range of {:,.2f} ± {:.4f}% is ({:,.2f}, {:,.2f}) with distance ±{:,.2f}",
+                        base,
+                        pct * 100,
+                        lower,
+                        upper,
+                        lowmid,
+                    )
+                elif text1.startswith("fu"):
+                    cmd, *rest = text1.split()
+
+                    if rest:
+                        try:
+                            symbol, side, qty, trail, *check = rest
+                        except:
+                            logger.error(
+                                "fu [symbol] [side] [qty] [trail] [[checkonly]]"
+                            )
+                            continue
+
+                        got = dict(Symbol=symbol, Side=side, Quantity=qty)
+                        got["Percentage Stop / Trail"] = trail
+                        got["Place Order"] = "Check Only" if check else "Live Order"
+                    else:
+                        stuff = [
+                            Q("Symbol"),
+                            Q("Side", choices=["Buy", "Sell"]),
+                            # Q("Order", choices=["LMT", "MKT", "STP"]),
+                            Q("Quantity"),
+                            Q("Percentage Stop / Trail"),
+                            Q("Place Order", choices=["Check Only", "Live Order"]),
+                        ]
+                        got = await self.qask(stuff)
+                        logger.info("Got: {}", got)
+
+                    try:
+                        sym = got["Symbol"].upper()
+                        qty = got["Quantity"]
+                        isLong = got["Side"].title() == "Buy"
+                        liveOrder = got["Place Order"] == "Live Order"
+                        percentStop = float(got["Percentage Stop / Trail"]) / 100
+                        fxchg = FUTS_EXCHANGE[sym]
+                    except:
+                        logger.info("Canceled by lack of fields...")
+                        continue
+
+                    bid, ask, multiplier = self.currentQuote(sym)
+                    (qualified,) = await self.qualify(
+                        Future(
+                            currency="USD",
+                            symbol=sym,
+                            exchange=fxchg.exchange,
+                            lastTradeDateOrContractMonth=FUT_EXP,
+                        )
+                    )
+                    logger.info("qual: {} for {}", qualified, fxchg.name)
+
+                    order = self.midpointBracketBuyOrder(
+                        qualified, qty=qty, isLong=isLong, ask=ask, stopPct=percentStop
+                    )
+
+                    if liveOrder:
+                        placed = []
+                        for o in order:
+                            logger.info("Placing order: {}", o)
+                            t = self.ib.placeOrder(qualified, o)
+                            placed.append(t)
+
+                        logger.info("Placed: {}", placed)
+                    else:
+                        for o in order:
+                            logger.info("Checking order: {}", o)
+                            # what-if orders always transmit true, but they aren't live.
+                            o.transmit = True
+                            ordstate = await self.ib.whatIfOrderAsync(qualified, o)
+                            logger.info("ordstate: {}", ordstate)
+
+                elif text1 == "bars":
+                    logger.info("bars: {}", self.liveBars)
+
+                    # reset bar cache so it doesn't grow forever...
+                    for k, v in self.liveBars.items():
+                        v.clear()
+
+                if not text1:
+                    continue
             except KeyboardInterrupt:
                 continue  # Control-C pressed. Try again.
             except EOFError:

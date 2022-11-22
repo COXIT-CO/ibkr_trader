@@ -1,5 +1,4 @@
-from re import I
-from taras_trader import helpers
+from . import helpers
 
 # add lookup pattern to import anything from __init__.py module
 
@@ -23,8 +22,7 @@ from typing import Union
 
 from dataclasses import dataclass
 
-from taras_trader import helpers
-from taras_trader import app
+from . import app
 
 # from helpers import extract_data_from_yaml_file
 
@@ -326,9 +324,13 @@ class Stocks:
 
     def extract_suspended_stocks(self, file_path):
         """extract suspended stocks data from config file"""
-        self.suspended_stocks = helpers.process_suspended_stocks(
-            helpers.extract_data_from_yaml_file(file_path)
-        )
+        try:
+            self.suspended_stocks = helpers.process_suspended_stocks(
+                helpers.extract_data_from_yaml_file(file_path)
+            )
+        except FileNotFoundError:
+            # if restore file is not found it means we launch the program for the first time
+            pass
 
 
     def start_following_stock(self, stock_symbol):

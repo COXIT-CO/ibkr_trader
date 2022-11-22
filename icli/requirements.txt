@@ -6,7 +6,8 @@ loguru>=0.6.0
 questionary>=1.9.0
 tableprint>=0.9.1
 seaborn>=0.11.1
-# pygame>=2.0.1
+python-prctl
+# pygame
 prettyprinter>=0.18.0
 setproctitle>=1.2.2
 diskcache>=5.2.1

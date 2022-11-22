@@ -34,17 +34,13 @@ async def initcli():
         accountId=ACCOUNT_ID, toolbarUpdateInterval=REFRESH, host=HOST, port=PORT
     )
     await app.setup()
-    if sys.stdin.isatty():
         # patch entire application with prompt-toolkit-compatible stdout
-        with patch_stdout(raw=True):
-            try:
-                await app.dorepl()
-            except SystemExit:
-                # known good exit condition
-                ...
-    else:
-        # NOT IMPLEMENTED HERE, HOLDOVER FROM TCLI
-        await app.consumeStdin()
+    with patch_stdout(raw=True):
+        try:
+            await app.dorepl()
+        except SystemExit:
+            # known good exit condition
+            ...
 
     app.stop()
 
