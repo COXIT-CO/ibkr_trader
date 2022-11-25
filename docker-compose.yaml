@@ -9,13 +9,9 @@ networks:
 services:
   gateway:
     build: ./gateway
-    container_name: gateway_c
+    container_name: gateway
     ports:
       - 5900:5900
-    volumes:
-      - /tmp/.X11-unix/:/tmp/.X11-unix/
-    environment:
-      - DISPLAY=$DISPLAY
     networks:
       loki:
         ipv4_address: 10.5.0.5
@@ -28,7 +24,7 @@ services:
         - ICLI_IBKR_ACCOUNT_ID=${ICLI_IBKR_ACCOUNT_ID}
         - ICLI_IBKR_HOST=${ICLI_IBKR_HOST}
         - ICLI_IBKR_PORT=${ICLI_IBKR_PORT}
-    container_name: icli_c
+    container_name: icli
     networks:
       loki:
         ipv4_address: 10.5.0.6
@@ -41,7 +37,7 @@ services:
         - ICLI_IBKR_ACCOUNT_ID=${ICLI_IBKR_ACCOUNT_ID}
         - ICLI_IBKR_HOST=${ICLI_IBKR_HOST}
         - ICLI_IBKR_PORT=${ICLI_IBKR_PORT}
-    container_name: taras_trader_c
+    container_name: taras_trader
     volumes:
       - ./config/config_buy.yaml:/app/taras_trader/config_buy.yaml
     networks:
@@ -51,7 +47,7 @@ services:
 
   config:
     build: ./config
-    container_name: config_c
+    container_name: config
     volumes:
       - ./config/config_buy.yaml:/config_buy.yaml
     networks:
