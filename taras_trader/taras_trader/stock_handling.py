@@ -252,9 +252,8 @@ class Stocks:
         """set proper stock conditions order cause stock-handling functions
         preserve order"""
         possible_ordered_conditions = (
-            'quantity', 'drop_percent', 'trailing-drop-percent', 
-            'trailing-up-percent', 'rise_percent', 'percentage-risk-avoidance',
-            'risk_avoidance_percent', 'drop_price', 'max_price',
+            'quantity', 'drop_percent', 'up_percent',
+            'sell_percent', 'drop_price', 'max_price',
         )
 
         ordered_stock_conditions = (stock_symbol,)
@@ -270,11 +269,11 @@ class Stocks:
         """
         for every suspended stock set proper conditions order 
         cause all 3 sub-functions of main stock-handling algorithm accept arguments as positional ones in specific order (take a look),
-        so it's our task to preserve proper arguments order rather than count on that it's already done (cause yaml i/o operations can mess him),
+        so it's our task to preserve proper arguments order rather than count on that it's already done (cause yaml i/o operations can mess it),
         then depending on stock conditions determine one of 3 main stock-handling algorithm sub-functions and start stock processing from it
         """
         for stock_data in self.suspended_stocks:
-            stock_symbol = list(stock_data.keys())[0]
+            stock_symbol = stock_data['stock']  # list(stock_data.keys())[0]
             conditions = list(stock_data.values())[0]
             # set stock conditions in proper order cause stock-handling functions 
             # are sensitive to arguments order and we aren't allowed to pass arguments as named ones with dictionary
@@ -326,6 +325,7 @@ class Stocks:
         """extract suspended stocks data from config file"""
         try:
             self.suspended_stocks = helpers.extract_data_from_yaml_file(file_path)
+            helpers.process_suspended_stocks(self.suspended_stocks)
         except FileNotFoundError:
             # if restore file is not found it means we launch the program for the first time
             pass
@@ -358,7 +358,6 @@ class Stocks:
         while True:
             if not self.is_suspended_stocks_processed:
                 self.extract_suspended_stocks("taras_trader/restore.yaml")
-                await asyncio.sleep(10000)
                 self.process_suspended_stocks()
                 self.set_is_suspended_stocks_processed(True)
 
@@ -482,16 +481,16 @@ class Stocks:
         symbol, 
         quantity,
         drop_percent, 
-        rise_percent, 
-        risk_avoidance_percent,
-        previous_max_price=0,
+        up_percent, 
+        sell_percent,
+        prev_max_price=0,
     ):
         """
         starting point of main stock-handling algorithm
-        1. continuously get current stock price (every 3 seconds - time needed to make one loop itaration)
-        2. if it exceeds last max price than renew it
+        1. continuously get current stock price (every 3 seconds - time needed to make one loop iteration)
+        2. if it exceeds last max price renew it
         3. if it is less than drop price it means that stock dropped 'drop_percent' 
-            and we can move to 2 part of all stock-handling algorithm
+            and we can move to 2 part of whole stock-handling algorithm
         important thing is that we write down all the changes to config file
         """
         await asyncio.sleep(0.5)
@@ -500,8 +499,8 @@ class Stocks:
         conditions_to_find = {
             'quantity': quantity,
             'drop_percent': drop_percent,
-            'rise_percent': rise_percent,
-            'risk_avoidance_percent': risk_avoidance_percent,
+            'up_percent': up_percent,
+            'sell_percent': sell_percent,
         }
         # iterate through stocks holding dictionary and stop when stock data will match above one
         for i in range(len(self.stocks_being_processed)):
@@ -511,7 +510,7 @@ class Stocks:
 
         dict_to_update_info = list(self.stocks_being_processed[i].values())[0]
 
-        max_price = previous_max_price
+        max_price = prev_max_price
         drop_price = max_price * ((100 - drop_percent) / 100)
 
         start_time = datetime.datetime.now()
@@ -537,8 +536,8 @@ class Stocks:
                     self.buy_with_risk_avoidance(
                         symbol,
                         quantity,
-                        rise_percent,
-                        risk_avoidance_percent,
+                        up_percent,
+                        sell_percent,
                         drop_price,
                     )
                 )
@@ -567,8 +566,8 @@ class Stocks:
         self, 
         symbol, 
         quantity,  
-        rise_percent, 
-        risk_avoidance_percent, 
+        up_percent, 
+        sell_percent, 
         drop_price,
     ):
         """
@@ -581,12 +580,12 @@ class Stocks:
         important thing is that we write down all the changes to config file
         """
         await asyncio.sleep(0.5)
-        rise_price = drop_price * (1 + (rise_percent / 100))
+        rise_price = drop_price * (1 + (up_percent / 100))
 
         conditions_to_find = {
             'quantity': quantity,
-            'rise_percent': rise_percent,
-            'risk_avoidance_percent': risk_avoidance_percent,
+            'up_percent': up_percent,
+            'sell_percent': sell_percent,
             'drop_price': drop_price,
         }
         for i in range(len(self.stocks_being_processed)):
@@ -620,14 +619,14 @@ class Stocks:
                     return
 
                 del dict_to_update_info["drop_price"]
-                del dict_to_update_info["rise_percent"]
+                del dict_to_update_info["up_percent"]
                 max_price = current_stock_price
                 dict_to_update_info['max_price'] = max_price
                 self.update_stocks_file_info("taras_trader/restore.yaml")
 
                 asyncio.create_task(
                     self.provide_risk_avoidance(
-                        symbol, quantity, risk_avoidance_percent, max_price,
+                        symbol, quantity, sell_percent, max_price,
                     )
                 )
                 break
@@ -638,19 +637,19 @@ class Stocks:
 
 
     async def provide_risk_avoidance(
-        self, symbol, quantity, risk_avoidance_percent, max_price=0, 
+        self, symbol, quantity, sell_percent, max_price=0, 
     ):
         """
         final part of main stock-handling algorithm
         1. continuously get current stock price (every 3 seconds - time needed to make one loop itaration)
         2. if it exceeds last max price than renew it
-        3. if it dropped 'risk_avoidance_percent' it means we need to immediately sell it
+        3. if it dropped 'sell_percent' it means we need to immediately sell it
         important thing is that we write down all the changes to config file
         """
         await asyncio.sleep(0.5)
         conditions_to_find = {
             'quantity': quantity,
-            'risk_avoidance_percent': risk_avoidance_percent,
+            'sell_percent': sell_percent,
             'max_price': max_price,
         }
         for i in range(len(self.stocks_being_processed)):
@@ -660,7 +659,7 @@ class Stocks:
 
         dict_to_update_info = list(self.stocks_being_processed[i].values())[0]
         
-        alert_price = max_price * ((100 - risk_avoidance_percent) / 100)
+        alert_price = max_price * ((100 - sell_percent) / 100)
 
         start_time = datetime.datetime.now()
         while True:
@@ -671,7 +670,7 @@ class Stocks:
                 max_price = current_price
                 dict_to_update_info['max_price'] = max_price
                 self.update_stocks_file_info("taras_trader/out.yaml")
-                alert_price = max_price * ((100 - risk_avoidance_percent) / 100)
+                alert_price = max_price * ((100 - sell_percent) / 100)
 
             if current_price <= alert_price:
                 # sell stock as a limit with price of 98 percent of current price to fill the order immediately
