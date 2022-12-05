@@ -145,3 +145,15 @@ def process_scraped_stock_data(data_to_process):
             processed_data.append(stock_info)
 
     return processed_data
+
+
+
+def process_suspended_stocks(data):
+    """given the stocks data return it in convenient format"""
+    for i, stock_data in enumerate(data):
+        data[i]['drop_percent'] = stock_data['drop-percent']
+        del data[i]['drop-percent']
+        data[i]['up_percent'] = stock_data['up-percent']
+        del data[i]['up-percent']
+        data[i]['sell_percent'] = stock_data['sell-percent']
+        del data[i]['sell-percent']
