@@ -2,142 +2,155 @@ from . import exceptions
 from . import helpers
 
 
-def validate_yaml_data(data_to_validate: dict):
+def validate_yaml_data(raw_data: dict):
     try:
-        are_values_provided(data_to_validate)
-        is_fill_flag_valid(data_to_validate)
-        is_order_present(data_to_validate)
-        is_stock_set_present(data_to_validate)
-        are_conditions_valid(data_to_validate)
+        are_values_provided(raw_data)
+        is_stock_set_present(raw_data)
+        are_stocks_provided(raw_data)
+        are_conditions_valid(raw_data)
+        is_quantity_valid(raw_data)
     except exceptions.CustomYamlException as exc:
         return str(exc)
 
 
-def are_values_provided(data_to_validate: dict):
+def are_values_provided(raw_data: dict):
     """
     check if all keys in yaml file have values provided
     """
-    if isinstance(data_to_validate, dict):
-        for _, value in data_to_validate.items():
+    if isinstance(raw_data, dict):
+        for key, value in raw_data.items():
+            if key is None:
+                raise exceptions.CustomYamlException(
+                    f"""Rejected
+Empty keys are forbidden
+Take a look at pattern"""
+                )
             if value is None:
                 raise exceptions.CustomYamlException(
-                    "Error while scraping config file. \n\
-You didn't provide value for some key \n\
-See pattern in samples folder in project root"
+                    f"""Rejected
+No value provided for '{key}' key
+Take a look at pattern"""
                 )
             are_values_provided(value)
-    elif isinstance(data_to_validate, list):
-        for elem in data_to_validate:
+    elif isinstance(raw_data, list):
+        if not len(raw_data):
+            raise exceptions.CustomYamlException(
+                    """Rejected
+Value for 'stock-set' key is empty
+Take a look at pattern"""
+                )
+        for elem in raw_data:
             if elem is None:
                 raise exceptions.CustomYamlException(
-                    "Error while scraping config file. \n\
-Key values can't be empty \n\
-See pattern in samples folder in project root"
+                    """Rejected
+No data provided for 'stock-set'
+Take a look at pattern"""
                 )
             if not isinstance(elem, dict):
                 raise exceptions.CustomYamlException(
-                    "Invalid format of config file detected \n\
-You didn't provide value for some key \n\
-See pattern in samples folder in project root"
+                    """Rejected
+'stock-key' value is invalid
+Take a look at pattern"""
                 )
             are_values_provided(elem)
     else:
-        if data_to_validate is None:
+        if raw_data is None:
             raise exceptions.CustomYamlException(
-                    "Error while scraping config file. \n\
-File can't be empty \n\
-See pattern in samples folder in project root"
+                    """Error while scraping config file.
+File can't be empty
+Take a look at pattern"""
             )
 
 
-def is_fill_flag_valid(data_to_validate: dict):
-    """
-    check if 'fill' flag is present in yaml file and it's value equals to 'on' or 'off'
-    """
-    if not ('fill' in data_to_validate and data_to_validate['fill'] in ("on", "off")):
-        raise exceptions.CustomYamlException(
-            "Error while scraping config file. \n\
-'fill' keyword must be present on top of config file with value 'on'/'off'. \n\
-See pattern in samples folder in project root"
-        )
-
-
-def is_order_present(data_to_validate: dict):
-    """
-    check if 'order' keyword is present in yaml file and it's value is dictionary
-    """
-    if not ('order' in data_to_validate and type(data_to_validate['order']) == dict):
-        raise exceptions.CustomYamlException(
-            "Error while scraping config file. \n\
-'order' key must be under 'fill' one or the value assigned to it is invalid. \n\
-See pattern in samples folder in project root"
-        )
-
-
-def is_stock_set_present(data_to_validate: dict):
+def is_stock_set_present(raw_data: dict):
     """
     check if 'stock-set' keyword is present in yaml file and it's value is list
     """
-    if not ('stock-set' in data_to_validate['order'] and type(data_to_validate['order']['stock-set']) == list):
+    if not ('stock-set' in raw_data and type(raw_data['stock-set']) == list):
         raise exceptions.CustomYamlException(
             "Error while scraping config file. \n\
 'stock-set' key must be one level below 'order' one or the value assigned to it is invalid. \n\
-See pattern in samples folder in project root"
+Take a look at pattern"
         )
 
 
-def are_conditions_valid(data_to_validate: dict):
+def are_stocks_provided(raw_data: dict):
+    """
+    check if 'stocks' keywords is present
+    """
+    for stock_data in raw_data['stock-set']:
+        if 'stocks' not in stock_data:
+            raise exceptions.CustomYamlException(
+                """Error while scraping config file.
+No stocks are provided.
+Take a look at pattern"""
+            )
+
+
+def are_conditions_valid(raw_data: dict):
     """
     check if 'common-conditions' keyword is present in yaml file, it's value is dictionary, conditions are valid and 
     remaining conditions are provided for each stock separately or if it's not present check if all 3 conditions are 
     provided for each stock separately
     """
     common_conditions = ()
-    if 'common-conditions' in data_to_validate['order']:
-        helpers.are_conditions_good(data_to_validate['order']['common-conditions'])
+    if 'common-conditions' in raw_data:
+        helpers.are_conditions_good(raw_data['common-conditions'])
 
-        for condition in data_to_validate['order']['common-conditions']:
+        for condition in raw_data['common-conditions']:
             common_conditions += (condition,)
         if len(common_conditions) == 3:
             # all conditions are provided in common ones, so we don't need to worry
             # if user has provided remaining ones for each stock individually
-            pass
-        else:
-            separate_conditions = []
-            # determine separate conditions need to be provided
-            for cond in ('drop-percent', 'up-percent', 'sell-percent'):
-                if cond not in common_conditions:
-                    separate_conditions.append(cond)
-            for stock_data in data_to_validate['order']['stock-set']:
-                if 'conditions' not in stock_data:
-                    raise exceptions.CustomYamlException(
-                        "Error while scraping config file. \n\
-You have provided common conditions, but not all 3 of them, \n\
-so it's required to provide each of remaining for stock separately \n\
-See pattern in samples folder in project root"
-                    )
-                helpers.are_conditions_good(stock_data['conditions'])
-                for cond in separate_conditions:
-                    if cond not in stock_data['conditions']:
-                        raise exceptions.CustomYamlException(
-                            f"Error while scraping config file. \n\
-You didn't provided '{cond}' condition neither in common conditions nor in separate one for some stock \n\
-See pattern in samples folder in project root"
-                        )
-    elif 'common-conditions' not in data_to_validate['order']:
-        separate_conditions = ('drop-percent', 'up-percent', 'sell-percent')
-        for stock_data in data_to_validate['order']['stock-set']:
+            return
+
+        separate_conditions = []
+        # determine separate conditions need to be provided
+        for cond in ('drop-percent', 'up-percent', 'sell-percent'):
+            if cond not in common_conditions:
+                separate_conditions.append(cond)
+        for stock_data in raw_data['stock-set']:
             if 'conditions' not in stock_data:
                 raise exceptions.CustomYamlException(
-                    "Error while scraping config file. \
-You didn't provided common conditions, so have to provide them for each stock separately \
-See pattern in samples folder in project root"
+                    """Error while scraping config file.
+You have provided common conditions, but not all 3 of them,
+so it's required to provide each of remaining for every stock separately
+Take a look at pattern"""
+                )
+            helpers.are_conditions_good(stock_data['conditions'])
+            # check if missing conditions provided for separate stock
+            for cond in separate_conditions:
+                if cond not in stock_data['conditions']:
+                    raise exceptions.CustomYamlException(
+                        f"""Error while scraping config file.
+You didn't provided '{cond}' condition neither in common conditions nor in separate one for some stock
+Take a look at pattern"""
+                    )
+    elif 'common-conditions' not in raw_data:
+        for stock_data in raw_data['stock-set']:
+            if 'conditions' not in stock_data:
+                raise exceptions.CustomYamlException(
+                    """Error while scraping config file.
+You didn't provided common conditions, so have to provide them for each stock separately
+Take a look at pattern"""
                 )
             helpers.are_conditions_good(stock_data['conditions'])
             for cond in ('drop-percent', 'up-percent', 'sell-percent'):
                 if cond not in stock_data['conditions']:
                     raise exceptions.CustomYamlException(
-                        f"Error while scraping config file. \
-You didn't provided {cond} condition neither in separate stock conditions nor in common ones \
-See pattern in samples folder in project root"
+                        f"""Error while scraping config file.
+You didn't provided {cond} condition neither in separate stock conditions nor in common ones
+Take a look at pattern"""
                     )
+
+
+def is_quantity_valid(raw_data: dict):
+    for stock_data in raw_data['stock-set']:
+        for _, quant in stock_data['stocks'].items():
+            if not helpers.is_quantity_valid(quant):
+                raise exceptions.CustomYamlException(
+                    """Error while scraping config file.
+Stock quantity must be integer (numeric quantity) or
+string starting with '$' sign preceding actual floating point or integer price value.
+Take a look at pattern"""
+                )
