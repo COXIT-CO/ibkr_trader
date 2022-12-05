@@ -325,9 +325,7 @@ class Stocks:
     def extract_suspended_stocks(self, file_path):
         """extract suspended stocks data from config file"""
         try:
-            self.suspended_stocks = helpers.process_suspended_stocks(
-                helpers.extract_data_from_yaml_file(file_path)
-            )
+            self.suspended_stocks = helpers.extract_data_from_yaml_file(file_path)
         except FileNotFoundError:
             # if restore file is not found it means we launch the program for the first time
             pass
@@ -360,6 +358,7 @@ class Stocks:
         while True:
             if not self.is_suspended_stocks_processed:
                 self.extract_suspended_stocks("taras_trader/restore.yaml")
+                await asyncio.sleep(10000)
                 self.process_suspended_stocks()
                 self.set_is_suspended_stocks_processed(True)
 

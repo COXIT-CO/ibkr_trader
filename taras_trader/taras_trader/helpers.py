@@ -145,18 +145,3 @@ def process_scraped_stock_data(data_to_process):
             processed_data.append(stock_info)
 
     return processed_data
-
-
-
-def process_suspended_stocks(data):
-    """given the stocks data return it in convenient format"""
-    processed_data = []
-
-    for item in data:
-        symbol = list(item.keys())[0]
-        conditions = list(item.values())[0][0]
-        processed_data.append(
-            {symbol: conditions},
-        )
-
-    return processed_data
