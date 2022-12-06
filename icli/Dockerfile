@@ -3,16 +3,20 @@ FROM python:3
 WORKDIR /app
 
 ENTRYPOINT ["tail", "-f", "/dev/null"]
-COPY . .
+COPY requirements.txt remove_pygame.py ./
 RUN apt-get update -y
 RUN apt-get install -y apt-utils python3-venv
 RUN pip install --upgrade pip
 RUN pip install --upgrade setuptools supertools
 RUN pip install ez_setup 
-
 RUN apt-get install --assume-yes build-essential libcap-dev git 
+
 RUN pip install -r requirements.txt
-WORKDIR "/app"
+RUN git clone https://github.com/mattsta/icli.git
+RUN mv icli icli2
+RUN cp -r icli2/* .
+RUN rm -rf icli2
+RUN python remove_pygame.py
 RUN touch .env.icli
 ARG ICLI_IBKR_ACCOUNT_ID
 ENV ICLI_IBKR_ACCOUNT_ID=${ICLI_IBKR_ACCOUNT_ID}
