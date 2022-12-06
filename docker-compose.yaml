@@ -1,3 +1,5 @@
+version: "3.4"
+
 networks:
   loki:
     driver: bridge
@@ -6,12 +8,21 @@ networks:
        - subnet: 10.5.0.0/16
          gateway: 10.5.0.1
 
+
 services:
-  gateway:
-    build: ./gateway
-    container_name: gateway
+  ib-gateway:
+    build: ./ib-gateway-docker/latest
+    container_name: ib_gateway
+    restart: always
+    environment:
+      TWS_USERID: ${TWS_USERID}
+      TWS_PASSWORD: ${TWS_PASSWORD}
+      TRADING_MODE: ${TRADING_MODE:-live}
+      VNC_SERVER_PASSWORD: ${VNC_SERVER_PASSWORD:-}
     ports:
-      - 5900:5900
+      - "127.0.0.1:4001:4001"
+      - "127.0.0.1:4002:4002"
+      - "127.0.0.1:5900:5900"
     networks:
       loki:
         ipv4_address: 10.5.0.5
@@ -39,17 +50,19 @@ services:
         - ICLI_IBKR_PORT=${ICLI_IBKR_PORT}
     container_name: taras_trader
     volumes:
-      - ./config/config_buy.yaml:/app/taras_trader/config_buy.yaml
+      - ./config.yaml:/app/taras_trader/config.yaml
     networks:
       loki:
         ipv4_address: 10.5.0.7
 
-
-  config:
-    build: ./config
-    container_name: config
-    volumes:
-      - ./config/config_buy.yaml:/config_buy.yaml
-    networks:
-      loki:
-        ipv4_address: 10.5.0.8
+    
+# !!! TODO: add Dockerfile for scrape server
+  # server:
+  #   build: 
+  #     context: ./taras_trader
+  #   container_name: server
+  #   volumes:
+  #     - ./config.yaml:/app/config.yaml
+  #   networks:
+  #     loki:
+  #       ipv4_address: 10.5.0.8
