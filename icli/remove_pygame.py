@@ -8,22 +8,23 @@ def remove_pygame_occurencies(file_path):
     
     is_code_block = False
     accumulative_string = "..."
-    for i, line in enumerate(lines):
+    # iterating through extracted lines to change some of them by index
+    for ind, line in enumerate(lines):
         spaces = len(line) - len(line.lstrip(" "))
         if "if" in line.lower() and "pygame" in line.lower():
-            lines[i] = spaces * " " + "if False:\n"
+            lines[ind] = spaces * " " + "if False:\n"
         elif "pygame" in line.lower():
             if not is_code_block:
                 is_code_block = True
-            lines[i] = str()
+            lines[ind] = str()
             if len(accumulative_string) == 3:
                 accumulative_string = " " * spaces + accumulative_string
         elif spaces <= len(accumulative_string) - len(accumulative_string.lstrip(" ")) and is_code_block:
-            lines[i-1] = accumulative_string + "\n"
+            lines[ind-1] = accumulative_string + "\n"
             accumulative_string = "..."
             is_code_block = False
         elif spaces > len(accumulative_string) - len(accumulative_string.lstrip(" ")) and is_code_block:
-            lines[i] = str()
+            lines[ind] = str()
 
         
     with open(file_path, "w") as f:
