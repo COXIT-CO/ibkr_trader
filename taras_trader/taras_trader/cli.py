@@ -1583,7 +1583,6 @@ class IBKRCmdlineApp:
         from . import stock_handling
         stock = stock_handling.Stocks()
         stock.set_ib(self.ib)
-        stock.set_loop(loop)
         stock.subscribe_market_data()
         while True:
             try:
