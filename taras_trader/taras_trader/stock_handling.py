@@ -47,21 +47,13 @@ STATUS_FIELDS = set(LIVE_ACCOUNT_STATUS)
 @dataclass
 class Stocks:
     # pending_stocks: dict[str, Any] = field(default_factory=dict)
-    extracted_data = []
     stocks_being_processed = []
-    new_stocks = []
-    raw_stocks_data = {}
     stock_prices = {}
-    stocks_quantity = {}
     stock_tickers = {}
     subscribes_per_stock = {}
     suspended_stocks = {}
-    summary = {}
-    stop_trigger = False
-    stop_write_flag = False
-    is_suspended_stocks_processed = False
+    is_file_avaliable = True
     ib: IB = field(default_factory=IB)
-    loop = None
     accountStatus: dict[str, float] = field(
         default_factory=lambda: dict(
             zip(LIVE_ACCOUNT_STATUS, [0.00] * len(LIVE_ACCOUNT_STATUS))
@@ -72,38 +64,16 @@ class Stocks:
 
 
     @classmethod
-    def set_stop_write_flag(cls, data):
+    def set_is_file_avaliable(cls, data):
         if data is None:
             data = {}
-        cls.stop_write_flag = data
-
-    @classmethod
-    def set_stocks_quantity(cls, data=None):
-        if data is None:
-            data = {}
-        cls.stocks_quantity = data
-
-
-    @classmethod
-    def set_new_stocks(cls, data=None):
-        if data is None:
-            data = []
-        cls.new_stocks = data
+        cls.is_file_avaliable = data
 
     @classmethod
     def set_stock_prices(cls, data=None):
         if data is None:
             data = []
         cls.stock_prices = data
-
-    @classmethod
-    def set_stop_trigger(cls, value: bool = False):
-        cls.stop_trigger = value
-
-
-    @classmethod
-    def set_is_suspended_stocks_processed(cls, value: bool = False):
-        cls.is_suspended_stocks_processed = value
 
 
     def updateSummary(self, v):
@@ -126,46 +96,17 @@ class Stocks:
                 pass
 
 
-    def set_loop(self, loop):
-        self.loop = loop
-
-
     @classmethod
     def remove_processed_stock(cls, stock_data):
         cls.stocks_being_processed.remove(stock_data)
 
 
     @classmethod
-    def process_new_orders(cls, file_to_read):
-        # while True:
-        # if cls.stop_trigger:
-        #     await asyncio.sleep(5)
-        #     cls.stop_trigger = False
-        cls.raw_stocks_data = helpers.extract_data_from_yaml_file(file_to_read)
-        # for stock_data in stocks_to_process:
-        #     if stock_data not in cls.stocks_being_processed:
-
-        # await asyncio.sleep(30)
-        # continue
-
-        if 'fill' in cls.raw_stocks_data and cls.raw_stocks_data['fill'] == 'on':
-            cls.new_stocks = helpers.process_scraped_stock_data(cls.raw_stocks_data)
-            # cls.stocks_being_processed = helpers.process_scraped_stock_data(cls.raw_stocks_data)
-            # print(cls.raw_stocks_data)
-            # print(cls.raw_stocks_data)
-            helpers.replace_stocks_being_processed(cls.raw_stocks_data, file_to_read)
-            # helpers.write_orders_to_file(cls.new_stocks, file_to_write)
-            # cls.write_orders_to_file(cls.stocks_being_processed, file_to_write)
-            # helpers.write_orders_to_file(raw_stocks_data, path_to_file)
-        # await asyncio.sleep(3)
-
-
-    @classmethod
-    def write_orders_to_file(cls, data_to_write, path_to_file):
-        while True:
-            cls.stop_trigger = True
-            helpers.write_orders_to_file(data_to_write, path_to_file)
-            cls.stop_trigger = False
+    def get_new_stocks(cls, file_to_read):
+        stocks = helpers.extract_data_from_yaml_file(file_to_read)
+        if stocks:
+            helpers.reformat_stocks(stocks)
+            return stocks
 
 
     @staticmethod
@@ -193,146 +134,105 @@ class Stocks:
         """continually get current stock price """
         self.stock_prices[symbol] = None
         while True:
-            if symbol not in self.stock_tickers:
-                break
-            self.stock_prices[symbol] = self.stock_tickers[symbol].midpoint()
-            if math.isnan(self.stock_prices[symbol]) or self.stock_prices[symbol] <= 0:
-                self.stock_prices[symbol] = None
+            price = self.stock_tickers[symbol].midpoint()
+            self.stock_prices[symbol] = None if (math.isnan(price) or price <= 0) else price
             await asyncio.sleep(3)
 
 
-
-    @staticmethod
-    def get_time_in_seconds():
-        time_now = datetime.datetime.now()
-        # we include not just nake seconds,
-        # but also miliseconds to get more precise representation
-        time_now_seconds = time_now.second + time_now.microsecond / 1_000_000
-        return time_now_seconds
-
-
-    async def is_stocks_cost_affordable(self):
+    async def are_stocks_affordable(self, new_stocks):
         """given all the stocks not yet processed define
         if their total cost affordable having current balance"""
         total_cost = 0
         while True:
-            time_1 = self.get_time_in_seconds()
-            for stock_symbol, quantities in self.stocks_quantity.items():
-                for quantity in quantities:
-                    if isinstance(quantity, str) and quantity.startswith("$"):
-                        total_cost += int(quantity[1:])
-                    else:
-                        current_price = await self.get_valid_price(stock_symbol)
-                        total_cost += current_price * int(quantity)
-            time_2 = self.get_time_in_seconds()
+            start_time = datetime.datetime.now()
+            for stock_data in new_stocks:
+                quantity = stock_data['quantity']
+                if isinstance(quantity, str) and quantity.startswith("$"):
+                    total_cost += int(quantity[1:])
+                else:
+                    current_price = await self.get_valid_price(stock_data['stock'])
+                    total_cost += current_price * int(quantity)
+
+            elapsed_time = helpers.find_timedelta(start_time, datetime.datetime.now())
             # if it took nore than 10 seconds to calculate total cost 
             # do it again to assure actual stock prices esle return the results
-            if time_2 - time_1 <= 10:
+            if elapsed_time and elapsed_time <= 10:
                 break
-            time.sleep(time_2 - time_1)
-            time_1 = self.get_time_in_seconds()
+            await asyncio.sleep(elapsed_time)
             total_cost = 0
         
         return total_cost > self.accountStatus['TotalCashValue'], self.accountStatus['TotalCashValue'], total_cost
 
 
         
-    def define_start_function_suspended_stocks(self, conditions):
-        """depending on the stock conditions define one of 3 function of main algorithm to start from"""
-        if 'drop_percent' in conditions and 'rise_percent' in conditions and 'risk_avoidance_percent' in conditions:
+    def define_start_function(self, conditions):
+        """depending on the stock conditions define one of 3 functions of main algorithm to start with"""
+        if 'drop_percent' in conditions and 'up_percent' in conditions and 'sell_percent' in conditions:
             return self.check_drop
-        elif 'drop_percent' not in conditions and 'rise_percent' in conditions:
+        elif 'drop_percent' not in conditions and 'up_percent' in conditions:
             return self.buy_with_risk_avoidance
         else:
             return self.provide_risk_avoidance
 
 
 
-    def set_properties_order(self, stock_data):
-        """set proper stock conditions order cause stock-handling functions
-        preserve order"""
-        ordered_properties = [
-            'stock', 'quantity', 'drop_percent', 'up_percent',
-            'sell_percent', 'drop_price', 'max_price',
-        ]
-
-        for cond in ordered_properties.copy():
-            if cond not in stock_data:
-                del ordered_properties[cond]
-
-        return ordered_properties
-
-
-
-    def process_suspended_stocks(self):
+    async def process_suspended_stocks(self, suspended_stocks):
         """
         for every suspended stock set proper conditions order 
         cause all 3 sub-functions of main stock-handling algorithm accept arguments as positional ones in specific order (take a look),
         so it's our task to preserve proper arguments order rather than count on that it's already done (cause yaml i/o operations can mess it),
         then depending on stock conditions determine one of 3 main stock-handling algorithm sub-functions and start stock processing from it
         """
-        for stock_data in self.suspended_stocks:
+        for stock_data in suspended_stocks:
             stock_name = stock_data['stock']
             # set stock conditions in proper order cause stock-handling functions 
             # are sensitive to arguments order and we aren't allowed to pass arguments as named ones with dictionary
             # cause args parameter https://docs.python.org/3/library/threading.html#threading.Thread supports only
             # list or tuple, so we need to take of care of order by ourself
-            ordered_properties = self.set_properties_order(stock_data)
-            function_to_start_from = self.define_start_function_suspended_stocks(conditions)
+            start_func = self.define_start_function(stock_data)
 
-            # if stock isn't used yet start following it and 
-            if stock_name not in self.subscribes_per_stock or not self.subscribes_per_stock[stock_name]:
-                self.start_following_stock(stock_name)
-            self.subscribes_per_stock[stock_name] = self.subscribes_per_stock.get(stock_name, 0) + 1
+            # if stock isn't used yet start following it by making subscription 
+            # and infinitely getting its price
+            if not helpers.is_stock_used(stock_name, self.stocks_being_processed):
+                await self.start_following_stock(stock_name)
 
-            # add stock to general stock info keeping list
-            self.stocks_being_processed.append(
-                {stock_symbol: conditions}
-            )
+            # add stock to general stocks-holding list
+            self.stocks_being_processed.appendtaras_trader/taras_trader/helpers.py(stock_data)
             
-            # process stock in separate thread
-            asyncio.create_task(function_to_start_from(*ordered_properties))
-            # threading.Thread(
-            #     target=function_to_start_from, 
-            #     name="stock_handler", 
-            #     args=ordered_stock_conditions
-            # ).start()
+            asyncio.create_task(start_func(**stock_data))
 
 
-
-    def update_restore_file(self, path_to_file):
+    async def update_restore_file(self, path_to_file):
         """
         update actual stocks info in config file by provided path
         this function is synchronizing which means that if two parts of code try to update info in file
         one of them will wait for other to complete
         """
-        while self.stop_write_flag:
-            time.sleep(1.5)
-        self.set_stop_write_flag(True)
-        data_to_dump = []
-        for stock_data in self.stocks_being_processed:
-            stock_symbol = list(stock_data.keys())[0]
-            conditions = list(stock_data.values())[0]
-            data_to_dump.append({stock_symbol: [conditions]})
-        yaml_representation = yaml.dump(data_to_dump)
+        while not self.is_file_avaliable:
+            await asyncio.sleep(0.5)
+        self.set_is_file_avaliable(False)
+        yaml_representation = yaml.dump(self.stocks_being_processed)
         with open(path_to_file, "w") as file:
             file.write(yaml_representation)
-        self.set_stop_write_flag(False)
+        self.set_is_file_avaliable(True)
 
 
     def extract_suspended_stocks(self, file_path):
         """extract suspended stocks data from config file"""
         try:
-            self.suspended_stocks = helpers.extract_data_from_yaml_file(file_path)
-            helpers.process_suspended_stocks(self.suspended_stocks)
+            suspended_stocks = helpers.extract_data_from_yaml_file(file_path)
+            helpers.reformat_stocks(suspended_stocks)
+            return suspended_stocks
         except FileNotFoundError:
             # if restore file is not found it means we launch the program for the first time
             pass
 
 
-    def start_following_stock(self, stock_symbol):
+    async def start_following_stock(self, stock_symbol):
         # start requesting market data about stock and infinitely getting its current price
         self.stock_tickers[stock_symbol] = self.subscribe_stock_market_data(stock_symbol)
+        # ticker needs some time to populate its fields
+        await asyncio.sleep(0.5)
         asyncio.create_task(self.infinitely_get_stock_price(stock_symbol))
 
 
@@ -354,66 +254,42 @@ class Stocks:
             self.ib.reqAccountSummaryAsync(),  # self.ib.reqPnLAsync()
         )
 
+        # process suspended stocks if are so
+        await self.process_suspended_stocks(
+            self.extract_suspended_stocks("taras_trader/restore.yaml")
+        )
+
         while True:
-            if not self.is_suspended_stocks_processed:
-                self.extract_suspended_stocks("taras_trader/restore.yaml")
-                self.process_suspended_stocks()
-                self.set_is_suspended_stocks_processed(True)
+            start_time = datetime.datetime.now()
+            new_stocks = self.get_new_stocks("taras_trader/config.yaml")
 
-            self.process_new_orders("taras_trader/config_buy.yaml")
-
-            if self.new_stocks:
-                for i in range(len(self.new_stocks)):
-                    symbol = list(self.new_stocks[i].keys())[0]
-                    if symbol not in self.subscribes_per_stock or not self.subscribes_per_stock[symbol]:
-                        self.start_following_stock(symbol)
-                    self.subscribes_per_stock[symbol] = self.subscribes_per_stock.get(symbol, 0) + 1
-                    quantity = list(self.new_stocks[i].values())[0]['quantity']
-                    self.stocks_quantity[symbol] = self.stocks_quantity.get(symbol, []) + [quantity]
+            if new_stocks:
+                for stock_data in new_stocks:
+                    stock_name = stock_data['stock']
+                    if not helpers.is_stock_used(stock_name):
+                        await self.start_following_stock(stock_name)
                 
-                await asyncio.sleep(0.5)
+                are_stocks_affordable, balance_cash, total_stocks_cost = await self.are_stocks_affordable(new_stocks)
 
-                does_stocks_cost_exceed_balance, balance_cash, total_stocks_cost = await self.is_stocks_cost_affordable()
-                self.set_stocks_quantity()
-
-                if does_stocks_cost_exceed_balance:
-                    helpers.replace_stocks_being_processed(
-                        self.raw_stocks_data,
-                        "taras_trader/config_buy.yaml",
-                        total_stocks_cost,
-                        balance_cash,
-                    )
-
+                if not are_stocks_affordable:
                     # discard all subscriptions from stocks no more used
                     # and remove them from dictionaries holding their data
-                    for stock_symbol in self.subscribes_per_stock.copy():
-                        self.subscribes_per_stock[stock_symbol] -= 1
-                        if not self.subscribes_per_stock[stock_symbol]:
-                            self.stop_following_stock(stock_symbol)
-                    
-                    self.set_stop_trigger(True)
-                else:
-                    helpers.replace_stocks_being_processed(
-                        self.raw_stocks_data,
-                        "taras_trader/config_buy.yaml",
-                        are_stocks_accepted=True,
-                    )
-                
-                if not self.stop_trigger:
-                    for i in range(len(self.new_stocks)):
-                        symbol = list(self.new_stocks[i].keys())[0]
-                        stock_conditions = list(self.new_stocks[i].values())[0]
-                        ordered_args = self.set_proper_conditions_order(symbol, stock_conditions)
-
-                        asyncio.create_task(self.check_drop(*ordered_args))
-                        self.stocks_being_processed.append(self.new_stocks[i].copy())
+                    for stock_data in new_stocks:
+                        stock_name = stock_data['stock']
+                        if helpers.find_stock_occurencies(stock_name, self.stocks_being_processed) > 1:
+                            self.stop_following_stock(stock_name)
+                else:                
+                    for stock_data in new_stocks:
+                        self.stocks_being_processed.append(stock_data)
+                        asyncio.create_task(self.check_drop(**stock_data))
 
                     self.update_restore_file("taras_trader/restore.yaml")
-                    self.set_stop_trigger(False)
-
-                self.set_new_stocks()
-
-            await asyncio.sleep(10)
+            
+            await asyncio.sleep(
+                helpers.sleep_some_time(
+                    helpers.find_timedelta(start_time, datetime.datetime.now()), 10
+                )
+            )
 
 
 
@@ -428,15 +304,6 @@ class Stocks:
 
 
 
-    @staticmethod
-    def find_time_shift(start_time, actual_time):
-        """return 3 seconds minus time needed to make one loop iteration ('actual_time' - 'start_time')"""
-        time_delta = actual_time - start_time
-        time_shift = 3 - (time_delta.seconds + time_delta.microseconds / 1_000_000)
-        return time_shift if time_shift > 0 else 0
-
-
-
     async def check_drop(
         self,
         stock, 
@@ -445,6 +312,7 @@ class Stocks:
         up_percent, 
         sell_percent,
         max_price=0,
+        **kwargs
     ):
         """
         starting point of main stock-handling algorithm
@@ -456,8 +324,6 @@ class Stocks:
                 and we can move to 2 part of algorithm
         important thing is that we write down all the changes to restore file
         """
-        await asyncio.sleep(0.5)
-
         properties_to_find = {
             'stock': stock,
             'quantity': quantity,
@@ -465,18 +331,18 @@ class Stocks:
             'up_percent': up_percent,
             'sell_percent': sell_percent,
         }
-        # find in stocks-holding dict index of stock data entry we work with
+        # find in stocks-holding list index of stock data entry we work with
         for i in range(len(self.stocks_being_processed)):
             if properties_to_find <= self.stocks_being_processed[i]:
                 break
 
         stock_data = self.stocks_being_processed[i]
 
-        # price that stock need to drop to
+        # price that stock needs to drop to
         drop_price = max_price * ((100 - drop_percent) / 100)
 
-        start_time = datetime.datetime.now()
         while True:
+            start_time = datetime.datetime.now()
             # get new price till it becomes valid
             current_price = await self.get_valid_price(stock)
 
@@ -484,13 +350,13 @@ class Stocks:
                 max_price = current_price
                 drop_price = max_price * ((100 - drop_percent) / 100)
                 stock_data['max_price'] = max_price
-                self.update_restore_file("taras_trader/restore.yaml")
+                await self.update_restore_file("taras_trader/restore.yaml")
 
             if current_price <= drop_price:
                 del stock_data["max_price"]
                 del stock_data["drop_percent"]
                 stock_data['drop_price'] = drop_price
-                self.update_restore_file("taras_trader/restore.yaml")
+                await self.update_restore_file("taras_trader/restore.yaml")
 
                 asyncio.create_task(
                     self.buy_with_risk_avoidance(
@@ -503,8 +369,11 @@ class Stocks:
                 )
                 break
             
-            await asyncio.sleep(self.find_time_shift(start_time, datetime.datetime.now()))
-            start_time = datetime.datetime.now()
+            await asyncio.sleep(
+                helpers.sleep_some_time(
+                    helpers.find_timedelta(start_time, datetime.datetime.now()), 3
+                )
+            )
 
 
 
@@ -512,8 +381,9 @@ class Stocks:
         self, trade, order, start_time
     ):
         """wait for order to fill within 5 minutes otherwise cancel it"""
+        start_time = datetime.datetime.now()
         while trade.log[-1].status != "Filled":
-            time_difference = self.find_time_shift(start_time, datetime.datetime.now())
+            time_difference = helpers.find_timedelta(start_time, datetime.datetime.now())
             if time_difference >= 300:
                 self.ib.cancelOrder(order)
                 return False
@@ -529,6 +399,7 @@ class Stocks:
         up_percent, 
         sell_percent, 
         drop_price,
+        **kwargs
     ):
         """
         2 part of main stock-handling algorithm
@@ -541,7 +412,6 @@ class Stocks:
             2) else update info about stock and go to final part of main algorithm
         important thing is that we write down all the changes to config file
         """
-        await asyncio.sleep(0.5)
         # price reaching which stock will be purchased
         buy_price = drop_price * (1 + (up_percent / 100))
 
@@ -557,28 +427,27 @@ class Stocks:
                 break
 
         stock_data = self.stocks_being_processed[i]
-        
-        start_time = datetime.datetime.now()
+
         while True:
+            start_time = datetime.datetime.now()
             current_price = await self.get_valid_price(stock)
 
             if current_price >= buy_price:
                 # buy stock as a limit with price of 102 percent of current price to fill the order immediately
                 # (actually we buy it with 100 percent of current price, 102 percent is just a detour to immediate buy
                 # cause ibkr doesn't buy 100 percent price orders promptly (market orders))
-                order, trade = await place_order(
-                        stock, True, quantity, lmt=current_price * 1.02,
-                    )
+                order, trade = await helpers.place_order(
+                    stock, "buy", quantity, lmt=current_price * 1.02,
+                )
                 is_order_executed = await self.wait_fill_or_cancel(
-                    stock, quantity, trade, order, datetime.datetime.now(),
+                    stock, quantity, trade, order,
                 )
                 if not is_order_executed:
                     del self.stocks_being_processed[i]
+                    if helpers.find_stock_occurencies(stock_data['stock'], self.stocks_being_processed) > 1:
+                        self.stop_following_stock(stock_data['stock'])
                     return
 
-                del stock_data["drop_price"]
-                del stock_data["up_percent"]
-                stock_data['buy_price'] = current_price
                 self.update_restore_file("taras_trader/restore.yaml")
 
                 asyncio.create_task(
@@ -588,7 +457,11 @@ class Stocks:
                 )
                 break
             
-            await asyncio.sleep(self.find_time_shift(start_time, datetime.datetime.now()))
+            await asyncio.sleep(
+                helpers.sleep_some_time(
+                    helpers.find_timedelta(start_time, datetime.datetime.now()), 3
+                )
+            )
             start_time = datetime.datetime.now()
 
 
@@ -598,7 +471,8 @@ class Stocks:
         stock, 
         quantity, 
         sell_percent, 
-        buy_price=0, 
+        buy_price=0,
+        **kwargs
     ):
         """
         final part of main stock-handling algorithm
@@ -610,7 +484,6 @@ class Stocks:
         important thing is that we write down all the changes to config file
         """
         max_price = buy_price
-        await asyncio.sleep(0.5)
         properties_to_find = {
             'stock': stock,
             'quantity': quantity,
@@ -626,8 +499,8 @@ class Stocks:
         # price reaching which stock must be sold as fast as possible
         alert_price = max_price * ((100 - sell_percent) / 100)
 
-        start_time = datetime.datetime.now()
         while True:
+            start_time = datetime.datetime.now()
             current_price = self.get_valid_price(stock)
 
             if current_price > max_price:
@@ -641,48 +514,18 @@ class Stocks:
                 # sell stock as a limit with price of 98 percent of current price to fill the order immediately
                 # (actually we sell it with 100 percent of current price, 98 percent is just a detour to immediate sell
                 # cause ibkr doesn't sell 100 percent price orders promptly (market orders))
-                order, trade = await place_order(
-                    stock, False, quantity, "LMT", current_price * 0.98
-                )
                 del self.stocks_being_processed[i]
                 self.update_restore_file("taras_trader/out.yaml")
+                order, trade = await helpers.place_order(
+                    stock, "sell", quantity, "LMT", current_price * 0.98
+                )
+                if helpers.find_stock_occurencies(stock_data['stock'], self.stocks_being_processed) > 1:
+                    self.stop_following_stock(stock_data['stock'])
 
                 break
             
-            await asyncio.sleep(self.find_time_shift(start_time, datetime.datetime.now()))
-            start_time = datetime.datetime.now()
-        
-
-
-async def place_order(
-    symbol,
-    action: Literal["buy", "sell"],
-    quantity,
-    order_type,
-    lmt=0,
-):
-    """
-    place order to the exhange
-    Parameters
-    ----------
-    symbol: str
-        Stock name
-    action: bool
-        True - buy, False - sell
-    quantity: int | str
-        quantity, can be integer or string of form '$X' where X - price in dollars
-    order_type: str
-        in our case only LMT literal is used as argument
-    lmt:
-        desired price
-    """
-    contract = Stock(symbol, "SMART", "USD")
-    trade = await app.app.placeOrderForContract(
-        symbol, 
-        True if action == "buy" else False, 
-        contract, 
-        quantity,
-        lmt,
-        order_type,
-    )
-    return trade
+            await asyncio.sleep(
+                helpers.sleep_some_time(
+                    helpers.find_timedelta(start_time, datetime.datetime.now()), 3
+                )
+            )
