@@ -2,6 +2,10 @@ import sys
 import collections
 import oyaml as yaml
 from ib_insync import Stock
+import datetime
+from typing import Literal
+from . import app
+import asyncio
 
 
 def contractForName(sym, exchange="SMART", currency="USD"):
@@ -45,86 +49,10 @@ def extract_data_from_yaml_file(path_to_file):
             sys.exit()
 
 
-
-def replace_stocks_being_processed(
-    stocks_data, 
-    file_path, 
-    stocks_cost=0, 
-    balance_cash=0, 
-    are_stocks_accepted: bool = False
-):
-    if are_stocks_accepted:
-        data_to_dump = collections.OrderedDict([
-            ('fill', 'off'), 
-            ('order', {
-                'buy': [{
-                    "stocks": [
-                        {"STOCK_NAME": "stock_quantity or price floating point price in dollars"}
-                    ], 
-                    "conditions": [
-                        {"type": "trailing-limit"},
-                        {"trailing-drop-percent": "x"},
-                        {"trailing-up-percent": "y"},
-                    ],
-                }], 
-                'sell': [
-                    {"type": "trailing-limit"}, 
-                    {"trailing-drop-percent": "z"},
-                ]
-                }
-            )
-        ])
-    elif stocks_cost and balance_cash:
-        stocks_data_copy = stocks_data.copy()
-        del stocks_data_copy['fill']
-        data_to_dump = collections.OrderedDict([
-            ('fill', 'off'), 
-            ('warning', 
-        f"stocks haven't been processes cause their price exceeds balance cash, \nstocks averall price - {stocks_cost}, balance cash -{balance_cash}, \nif you still want to proceed these stocks, please, consider their quantity"),
-        ])
-        data_to_dump.update(collections.OrderedDict(stocks_data_copy))
-    else:
-        data_to_dump = collections.OrderedDict([
-            ('fill', 'off'), 
-            ('warning', 
-        "previous stocks are being processed, please, don't put other ones until this title dissapears"),
-            ('order', {
-                'buy': [{
-                    "stocks": [
-                        {"STOCK_NAME": "stock_quantity or price floating point price in dollars"}
-                    ], 
-                    "conditions": [
-                        {"type": "trailing-limit"},
-                        {"trailing-drop-percent": "x"},
-                        {"trailing-up-percent": "y"},
-                    ],
-                }], 
-                'sell': [
-                    {"type": "trailing-limit"}, 
-                    {"trailing-drop-percent": "z"},
-                ]
-                }
-            )
-        ])
-
-    with open(file_path, "r") as file:
-        lines = file.readlines()
-
-    # write back already presented lines and add our ones
-    with open(file_path, "w") as file:
-        for line in lines:
-            if line.startswith("\n") or line.strip("\n").startswith("#"):
-                file.write(line)
-        
-        file.write(yaml.dump(data_to_dump))
-
-
-
 def write_orders_to_file(stocks_data: dict, file_path: str) -> None:
     yaml_representation = yaml.dump(stocks_data)
     with open(file_path, "w") as file:
         file.write(yaml_representation)
-
 
 
 def process_scraped_stock_data(data_to_process):
@@ -148,7 +76,7 @@ def process_scraped_stock_data(data_to_process):
 
 
 
-def process_suspended_stocks(data):
+def reformat_stocks(data):
     """given the stocks data return it in convenient format"""
     for i, stock_data in enumerate(data):
         data[i]['drop_percent'] = stock_data['drop-percent']
@@ -157,3 +85,78 @@ def process_suspended_stocks(data):
         del data[i]['up-percent']
         data[i]['sell_percent'] = stock_data['sell-percent']
         del data[i]['sell-percent']
+
+
+
+def get_time_in_seconds():
+    time_now = datetime.datetime.now()
+    # we include not just nake seconds,
+    # but also miliseconds to get more precise representation
+    time_now_seconds = time_now.second + time_now.microsecond / 1_000_000
+    return time_now_seconds
+
+
+
+async def place_order(
+    symbol,
+    action: Literal["buy", "sell"],
+    quantity,
+    order_type,
+    lmt=0,
+):
+    """
+    place order to the exchange
+    Parameters
+    ----------
+    symbol: str
+        Stock name
+    action: bool
+        True - buy, False - sell
+    quantity: int | str
+        quantity, can be integer or string of form '$X' where X - price in dollars
+    order_type: str
+        in our case only LMT literal is used as argument
+    lmt:
+        desired price
+    """
+    contract = Stock(symbol, "SMART", "USD")
+    trade = await app.app.placeOrderForContract(
+        symbol, 
+        True if action == "buy" else False, 
+        contract, 
+        quantity,
+        lmt,
+        order_type,
+    )
+    return trade
+
+
+def is_stock_used(stock_name, stocks):
+    return any(
+        [stock_data['stock'] == stock_name for stock_data in stocks]
+    )
+
+
+def find_timedelta(start_time, actual_time):
+    """return timedelta between current time and previous one"""
+    time_delta = actual_time - start_time
+    return time_delta.seconds + time_delta.microseconds / 1_000_000
+
+
+def sleep_some_time(time_delta, total_seconds):
+    """given total seconds and timedelta return their difference
+    which will correspond time needed to sleep to new loop iteration
+    where this function is used"""
+    time_difference = total_seconds - time_delta
+    return time_difference if time_difference > 0 else 0
+
+
+def find_stock_occurencies(stock_name, stocks):
+    """find how much times stock with provided name
+    is encountered in stocks-holding list"""
+    occurencies = 0
+    for stock_data in stocks:
+        if stock_data['name'] == stock_name:
+            occurencies += 1
+        if occurencies > 1:
+            return occurencies
