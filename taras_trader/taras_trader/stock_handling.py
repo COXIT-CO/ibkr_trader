@@ -32,6 +32,7 @@ from ib_insync import (
     Ticker,
 )
 import asyncio
+import requests
 
 # Configure logger where the ib_insync live service logs get written.
 # Note: if you have weird problems you don't think are being exposed
@@ -197,7 +198,7 @@ class Stocks:
                 await self.start_following_stock(stock_name)
 
             # add stock to general stocks-holding list
-            self.stocks_being_processed.appendtaras_trader/taras_trader/helpers.py(stock_data)
+            self.stocks_being_processed.append(stock_data)
             
             asyncio.create_task(start_func(**stock_data))
 
@@ -266,10 +267,11 @@ class Stocks:
             if new_stocks:
                 for stock_data in new_stocks:
                     stock_name = stock_data['stock']
-                    if not helpers.is_stock_used(stock_name):
+                    if not helpers.is_stock_used(stock_name, self.stocks_being_processed):
                         await self.start_following_stock(stock_name)
                 
-                are_stocks_affordable, balance_cash, total_stocks_cost = await self.are_stocks_affordable(new_stocks)
+                are_stocks_affordable, balance_cash, stocks_cost = await self.are_stocks_affordable(new_stocks)
+                helpers.send_response(stocks_cost, balance_cash)
 
                 if not are_stocks_affordable:
                     # discard all subscriptions from stocks no more used
