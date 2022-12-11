@@ -6,6 +6,7 @@ import datetime
 from typing import Literal
 from . import app
 import asyncio
+import requests
 
 
 def contractForName(sym, exchange="SMART", currency="USD"):
@@ -160,3 +161,10 @@ def find_stock_occurencies(stock_name, stocks):
             occurencies += 1
         if occurencies > 1:
             return occurencies
+
+
+def send_response(stocks_cost, balance_cash):
+    response = f"""stocks haven't been processes cause their price exceeds balance cash,
+stocks averall price - {stocks_cost}, balance cash -{balance_cash},
+if you still want to proceed these stocks, please, consider their quantity"""
+    requests.post('http://0.0.0.0:8000/balance_check', response.encode(encoding="utf-8"))
