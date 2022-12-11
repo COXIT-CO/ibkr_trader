@@ -56,13 +56,14 @@ services:
         ipv4_address: 10.5.0.7
 
     
-# !!! TODO: add Dockerfile for scrape server
-  # server:
-  #   build: 
-  #     context: ./taras_trader
-  #   container_name: server
-  #   volumes:
-  #     - ./config.yaml:/app/config.yaml
-  #   networks:
-  #     loki:
-  #       ipv4_address: 10.5.0.8
+  server:
+    build: 
+      context: ./scrape_server
+    container_name: server
+    volumes:
+      - ./config.yaml:/app/config.yaml
+    ports:
+      - "127.0.0.1:8000:8000"
+    networks:
+      loki:
+        ipv4_address: 10.5.0.8
