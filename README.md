@@ -122,10 +122,10 @@ A bit of explanation:
 <h3>How to pass file with order? Use suggested variant or use yours one</h3>
 
 <pre>
-curl -X POST --upload-file <b>your file</b> http://<b>ip</b>:8000
+curl -X POST --upload-file <b>your_file</b> http://<b>ip</b>:8000
 </pre>
 
 where:
 
-  - **you file** - file with order
+  - **you_file** - file with order
   - **ip** - ip adress used to host the application
