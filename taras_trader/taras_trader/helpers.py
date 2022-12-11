@@ -167,4 +167,4 @@ def send_response(stocks_cost, balance_cash):
     response = f"""stocks haven't been processes cause their price exceeds balance cash,
 stocks averall price - {stocks_cost}, balance cash -{balance_cash},
 if you still want to proceed these stocks, please, consider their quantity"""
-    requests.post('http://0.0.0.0:8000/balance_check', response.encode(encoding="utf-8"))
+    requests.post('http://10.5.0.8:8000/balance_check', response.encode(encoding="utf-8"))
