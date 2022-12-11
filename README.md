@@ -27,7 +27,7 @@ stock-set:
 common-conditions:
   sell-percent: 20
 ```
-A bit of explanation:
+Explanation:
 - ```stock-set``` keyword needs to be present as it is. It stores the list of stock-subsets as shown above
 - ```stocks``` keyword means that after it there will be pairs: ```stock symbol: quantity```
   - **note!** ```quantity``` can be integer corresponding real number of stocks or price taking form ```$X``` where X is actual floating point/integer price value
